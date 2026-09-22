@@ -1,0 +1,102 @@
+[
+  {
+    "name": "custom preserves explicit day unit",
+    "input": {
+      "billingCycle": "custom",
+      "customDays": 45,
+      "customCycleUnit": "day",
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "expected": {
+      "customDays": 45,
+      "customCycleUnit": "day",
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    }
+  },
+  {
+    "name": "fixed cycle clears custom and one-time fields",
+    "input": {
+      "billingCycle": "monthly",
+      "customDays": 30,
+      "customCycleUnit": "week",
+      "oneTimeTermCount": 6,
+      "oneTimeTermUnit": "month",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "expected": {
+      "customDays": null,
+      "customCycleUnit": null,
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    }
+  },
+  {
+    "name": "one-time buyout clears renewal fields",
+    "input": {
+      "billingCycle": "one-time",
+      "customDays": 30,
+      "customCycleUnit": "year",
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "expected": {
+      "customDays": null,
+      "customCycleUnit": null,
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    }
+  },
+  {
+    "name": "one-time fixed term preserves term and disables renewal",
+    "input": {
+      "billingCycle": "one-time",
+      "customDays": 30,
+      "customCycleUnit": "week",
+      "oneTimeTermCount": 6,
+      "oneTimeTermUnit": "month",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "expected": {
+      "customDays": null,
+      "customCycleUnit": null,
+      "oneTimeTermCount": 6,
+      "oneTimeTermUnit": "month",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    }
+  },
+  {
+    "name": "recurring manual renewal stays manual",
+    "input": {
+      "billingCycle": "annual",
+      "customDays": null,
+      "customCycleUnit": null,
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "expected": {
+      "customDays": null,
+      "customCycleUnit": null,
+      "oneTimeTermCount": null,
+      "oneTimeTermUnit": null,
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    }
+  }
+]

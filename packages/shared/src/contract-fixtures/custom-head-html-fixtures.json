@@ -1,0 +1,81 @@
+{
+  "maxBytes": 65536,
+  "cases": [
+    {
+      "name": "empty",
+      "raw": "",
+      "valid": true,
+      "enabled": false
+    },
+    {
+      "name": "single external script",
+      "raw": "<script defer src=\"https://cdn.example.com/widget.js\" data-widget-id=\"widget-id\"></script>",
+      "valid": true,
+      "enabled": true
+    },
+    {
+      "name": "clarity loader",
+      "raw": "<script type=\"text/javascript\">\n    (function(c,l,a,r,i,t,y){\n        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};\n        t=l.createElement(r);t.async=1;t.src=\"https://www.clarity.ms/tag/\"+i;\n        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);\n    })(window, document, \"clarity\", \"script\", \"your-project-id\");\n</script>",
+      "valid": true,
+      "enabled": true
+    },
+    {
+      "name": "mixed head elements",
+      "raw": "<!-- deployer-owned head additions -->\n<meta name=\"service-verification\" content=\"verification-token\">\n<link rel=\"preconnect\" href=\"https://cdn.example.com\">\n<style>html { --deployer-accent: #0057b8; }</style>\n<script src=\"https://cdn.example.com/widget.js\" async></script>\n<noscript><meta name=\"analytics-disabled\" content=\"true\"></noscript>\n<template id=\"deployer-template\"><span>Renewlet</span></template>\n<title>Renewlet instance</title>\n<base href=\"/\">",
+      "valid": true,
+      "enabled": true
+    },
+    {
+      "name": "unicode",
+      "raw": "<meta name=\"description\" content=\"续费提醒\">\n<script>window.__renewletLabel = \"订阅管理\";</script>",
+      "valid": true,
+      "enabled": true
+    },
+    {
+      "name": "64 KiB boundary",
+      "repeat": {
+        "prefix": "<!--",
+        "value": "x",
+        "count": 65529,
+        "suffix": "-->"
+      },
+      "valid": true,
+      "enabled": true
+    },
+    {
+      "name": "body escape",
+      "raw": "<body><script>window.__escaped = true;</script></body>",
+      "valid": false,
+      "enabled": false
+    },
+    {
+      "name": "html escape",
+      "raw": "<html><script>window.__escaped = true;</script></html>",
+      "valid": false,
+      "enabled": false
+    },
+    {
+      "name": "top-level text",
+      "raw": "not a head element<script>window.__loaded = true;</script>",
+      "valid": false,
+      "enabled": false
+    },
+    {
+      "name": "unclosed script",
+      "raw": "<script>window.__loaded = true;",
+      "valid": false,
+      "enabled": false
+    },
+    {
+      "name": "over 64 KiB",
+      "repeat": {
+        "prefix": "<!--",
+        "value": "x",
+        "count": 65530,
+        "suffix": "-->"
+      },
+      "valid": false,
+      "enabled": false
+    }
+  ]
+}

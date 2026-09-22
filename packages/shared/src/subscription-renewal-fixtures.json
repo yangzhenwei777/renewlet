@@ -1,0 +1,262 @@
+[
+  {
+    "name": "monthly-end-of-month-auto",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": "2026-01-31",
+      "nextBillingDate": "2026-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-03-31",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "monthly-end-of-month-manual-continue",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "expired",
+      "startDate": "2026-01-31",
+      "nextBillingDate": "2026-02-28",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-08-12",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-08-31",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "annual-leap-day-auto",
+    "input": {
+      "billingCycle": "annual",
+      "status": "active",
+      "startDate": "2024-02-29",
+      "nextBillingDate": "2025-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-02-28",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-02-28",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "weekly-manual-advances-past-today",
+    "input": {
+      "billingCycle": "weekly",
+      "status": "expired",
+      "startDate": "2026-01-01",
+      "nextBillingDate": "2026-01-08",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-01-15",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-01-22",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "weekly-manual-without-start-date-keeps-next-billing-anchor",
+    "input": {
+      "billingCycle": "weekly",
+      "status": "expired",
+      "startDate": null,
+      "nextBillingDate": "2026-01-08",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-01-15",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-01-22",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "monthly-auto-without-start-date-keeps-next-billing-anchor",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": null,
+      "nextBillingDate": "2026-01-20",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-03-20",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "auto-calculate-without-start-date-not-eligible",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": null,
+      "nextBillingDate": "2026-01-20",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": false
+  },
+  {
+    "name": "manual-future-date-still-advances-one-cycle",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": "2026-01-10",
+      "nextBillingDate": "2026-07-10",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-06-01",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-08-10",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "manual-keeps-edited-anchor",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "expired",
+      "startDate": "2026-01-01",
+      "nextBillingDate": "2026-01-20",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-03-01",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-03-20",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-day-auto-jumps-without-long-loop",
+    "input": {
+      "billingCycle": "custom",
+      "status": "active",
+      "startDate": "2020-01-01",
+      "nextBillingDate": "2020-01-31",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true,
+      "customDays": 30,
+      "customCycleUnit": "day"
+    },
+    "today": "2026-01-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-01-29",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-week-manual",
+    "input": {
+      "billingCycle": "custom",
+      "status": "expired",
+      "startDate": "2026-01-01",
+      "nextBillingDate": "2026-01-15",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false,
+      "customDays": 2,
+      "customCycleUnit": "week"
+    },
+    "today": "2026-02-01",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-02-12",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-month-auto",
+    "input": {
+      "billingCycle": "custom",
+      "status": "active",
+      "startDate": "2026-01-31",
+      "nextBillingDate": "2026-03-31",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true,
+      "customDays": 2,
+      "customCycleUnit": "month"
+    },
+    "today": "2026-04-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-05-31",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-month-manual-continue",
+    "input": {
+      "billingCycle": "custom",
+      "status": "expired",
+      "startDate": "2026-01-31",
+      "nextBillingDate": "2026-03-31",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": true,
+      "customDays": 2,
+      "customCycleUnit": "month"
+    },
+    "today": "2026-08-12",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-09-30",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-year-manual",
+    "input": {
+      "billingCycle": "custom",
+      "status": "expired",
+      "startDate": "2020-02-29",
+      "nextBillingDate": "2024-02-29",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false,
+      "customDays": 1,
+      "customCycleUnit": "year"
+    },
+    "today": "2026-01-01",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-02-28",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "paused-auto-not-eligible",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "paused",
+      "startDate": "2026-01-01",
+      "nextBillingDate": "2026-02-01",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": false
+  },
+  {
+    "name": "one-time-manual-not-eligible",
+    "input": {
+      "billingCycle": "one-time",
+      "status": "expired",
+      "startDate": "2026-01-01",
+      "nextBillingDate": "2026-02-01",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": false
+    },
+    "today": "2026-03-01",
+    "mode": "manual",
+    "eligible": false
+  }
+]

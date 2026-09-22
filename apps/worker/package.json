@@ -1,0 +1,39 @@
+{
+  "name": "@renewlet/cloudflare",
+  "private": true,
+  "license": "MIT",
+  "version": "0.3.26",
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --config ../../wrangler.jsonc --outdir dist",
+    "test:perf": "vitest run src/subscription-derived-state.performance.test.ts",
+    "test:run": "vitest run --exclude '**/*.performance.test.ts'",
+    "typecheck": "tsc --noEmit --project tsconfig.json"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.33",
+    "@ai-sdk/google": "4.0.36",
+    "@ai-sdk/openai": "4.0.32",
+    "@ai-sdk/openai-compatible": "3.0.25",
+    "@aws-sdk/client-s3": "^3.1104.0",
+    "@aws-sdk/middleware-flexible-checksums": "3.974.51",
+    "@aws-sdk/s3-request-presigner": "^3.1104.0",
+    "@noble/hashes": "2.2.0",
+    "@renewlet/shared": "workspace:*",
+    "@simplewebauthn/server": "^13.3.2",
+    "@smithy/fetch-http-handler": "^5.6.13",
+    "@smithy/protocol-http": "^5.5.16",
+    "@smithy/types": "^4.16.1",
+    "ai": "7.0.55",
+    "fast-xml-parser": "5.10.1",
+    "hono": "4.13.0",
+    "otpauth": "^9.5.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260911.1",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10",
+    "wrangler": "4.131.1"
+  }
+}

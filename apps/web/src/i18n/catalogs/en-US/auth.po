@@ -1,0 +1,459 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:25
+msgid "auth.mfaCodePlaceholder"
+msgstr "6-digit code"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:26
+msgid "auth.mfaRecoveryPlaceholder"
+msgstr "XXXX-XXXX-XXXX"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:83
+msgid "passwordReset.passwordMismatch"
+msgstr "Passwords do not match"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:19
+msgid "auth.turnstileFailed"
+msgstr "Human verification failed. Please try again."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:21
+msgid "auth.mfaSubtitle"
+msgstr "Use an authenticator code or recovery code to continue."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:12
+msgid "auth.passkeyLogin"
+msgstr "Sign in with passkey"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:74
+msgid "passwordReset.newSubtitle"
+msgstr "Complete password reset from the email link"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:92
+msgid "passwordReset.saveNew"
+msgstr "Save new password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:86
+msgid "passwordReset.changeFailed"
+msgstr "Change failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:87
+msgid "passwordReset.changeFailedDescription"
+msgstr "Change failed. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:42
+msgid "auth.heroAnalyzeSpending"
+msgstr "Analyze spending trends and optimize your stack"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:49
+msgid "setup.subtitle"
+msgstr "Create the first admin account"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:53
+msgid "setup.createAdmin"
+msgstr "Create admin"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:48
+msgid "setup.title"
+msgstr "Initialize Renewlet"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:55
+msgid "setup.failed"
+msgstr "Setup failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:56
+msgid "setup.failedDescription"
+msgstr "Setup failed. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:50
+msgid "setup.completedTitle"
+msgstr "Setup complete"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:44
+msgid "auth.setupAdminLink"
+msgstr "initialize admin"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:41
+msgid "auth.heroRenewalReminder"
+msgstr "Get reminders before renewals so nothing slips by"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:52
+msgid "setup.goToLogin"
+msgstr "Go to login"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:71
+msgid "passwordReset.sending"
+msgstr "Sending..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:64
+msgid "passwordReset.sendFailed"
+msgstr "Send failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:72
+msgid "passwordReset.sendLink"
+msgstr "Send reset link"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:45
+msgid "setup.name"
+msgstr "Name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:68
+msgid "passwordReset.successMessage"
+msgstr "If that email exists, a reset link will be sent to it. Please check your inbox."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:20
+msgid "auth.mfaTitle"
+msgstr "Complete sign-in verification"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:6
+msgid "auth.password"
+msgstr "Password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:85
+msgid "passwordReset.passwordUpdatedWithNextLogin"
+msgstr "Password updated. Use the new password the next time you sign in."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:77
+msgid "passwordReset.updatedLogin"
+msgstr "Password updated. Please sign in with the new password."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:31
+msgid "auth.mfaRequiredDescription"
+msgstr "Your password was accepted. Complete the next sign-in verification step."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:89
+msgid "passwordReset.passwordMinShort"
+msgstr "Password must be at least 8 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:59
+msgid "setup.validation.passwordLength"
+msgstr "Password must be at least 8 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:66
+msgid "passwordReset.smtpUnavailable1"
+msgstr "Email password reset is not enabled for this deployment."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:7
+msgid "auth.forgotPassword"
+msgstr "Forgot password?"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:23
+msgid "auth.mfaRecoveryCode"
+msgstr "Recovery code"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:60
+msgid "passwordReset.forgotTitle"
+msgstr "Forgot password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:78
+msgid "passwordReset.newPassword"
+msgstr "New password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:81
+msgid "passwordReset.passwordLength"
+msgstr "New password must be at least 8 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:47
+msgid "setup.displayName"
+msgstr "Display name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:8
+msgid "auth.showPassword"
+msgstr "Show password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:37
+msgid "auth.welcomeBack"
+msgstr "Welcome back"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:17
+msgid "auth.turnstileLoading"
+msgstr "Loading human verification..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:13
+msgid "auth.passkeyLoggingIn"
+msgstr "Verifying passkey..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:10
+msgid "auth.login"
+msgstr "Log in"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:11
+msgid "auth.loggingIn"
+msgstr "Logging in..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:38
+msgid "auth.loginSubtitle"
+msgstr "Log in to continue"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:14
+msgid "auth.loginFailed"
+msgstr "Login failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:46
+msgid "setup.loginEmail"
+msgstr "Login email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:79
+msgid "passwordReset.confirmPassword"
+msgstr "Confirm password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:54
+msgid "setup.adminCreated"
+msgstr "Admin created. Use your email to sign in."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:84
+msgid "passwordReset.passwordHelp"
+msgstr "At least 8 characters. Letters, numbers, and symbols are recommended."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:15
+msgid "auth.rememberEmail"
+msgstr "Remember email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:73
+msgid "passwordReset.newTitle"
+msgstr "Set new password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:93
+msgid "auth.loginRequired"
+msgstr "Please sign in first"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:82
+msgid "passwordReset.confirmRequired"
+msgstr "Enter the new password again"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:16
+msgid "auth.turnstileRequired"
+msgstr "Please complete human verification"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:51
+msgid "setup.completedDescription"
+msgstr "Use your email to sign in."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:65
+msgid "passwordReset.sendFailedDescription"
+msgstr "Send failed. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:67
+msgid "passwordReset.smtpUnavailable2"
+msgstr "Ask an admin to reset the password in user management."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:32
+msgid "auth.mfaInvalidTotp"
+msgstr "Enter a 6-digit code"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:36
+msgid "auth.validation.passwordRequired"
+msgstr "Enter your password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:88
+msgid "passwordReset.currentRequired"
+msgstr "Enter current password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:33
+msgid "auth.mfaInvalidRecovery"
+msgstr "Enter a recovery code"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:80
+msgid "passwordReset.passwordRequired"
+msgstr "Enter a new password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:57
+msgid "setup.validation.nameRequired"
+msgstr "Enter a display name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:35
+msgid "auth.validation.emailInvalid"
+msgstr "Enter a valid email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:58
+msgid "setup.validation.emailInvalid"
+msgstr "Enter a valid email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:63
+msgid "passwordReset.emailInvalid"
+msgstr "Enter a valid email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:34
+msgid "auth.validation.emailRequired"
+msgstr "Enter your email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:62
+msgid "passwordReset.emailRequired"
+msgstr "Enter your email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:76
+msgid "passwordReset.tokenMissing2"
+msgstr "Request a new password reset, or make sure the email link was not truncated."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:91
+msgid "passwordReset.resetFailedDescription"
+msgstr "Reset failed. Please request a new link."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:22
+msgid "auth.mfaTotp"
+msgstr "Authenticator code"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:39
+msgid "auth.heroTitle"
+msgstr "Manage all your subscriptions with ease"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:70
+msgid "passwordReset.emailHelp"
+msgstr "Enter your login email and we will send a one-time reset link."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:40
+msgid "auth.heroTrackCosts"
+msgstr "Track costs across every subscription service"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:61
+msgid "passwordReset.forgotSubtitle"
+msgstr "Receive a reset link by email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:5
+msgid "auth.email"
+msgstr "Email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:90
+msgid "passwordReset.resetFailed"
+msgstr "Reset failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:75
+msgid "passwordReset.tokenMissing1"
+msgstr "The reset link is missing its token, so a new password cannot be set."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:69
+msgid "passwordReset.successHint"
+msgstr "The link is valid for 1 hour. If it does not arrive, try again later or check spam."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:9
+msgid "auth.hidePassword"
+msgstr "Hide password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:30
+msgid "auth.mfaRequired"
+msgstr "Sign-in verification required"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:43
+msgid "auth.firstDeploy"
+msgstr "First deployment? Go to"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:28
+msgid "auth.mfaVerifying"
+msgstr "Verifying..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:29
+msgid "auth.mfaFailed"
+msgstr "Verification failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:18
+msgid "auth.turnstileExpired"
+msgstr "Verification expired. Please complete it again."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:27
+msgid "auth.mfaVerify"
+msgstr "Verify and sign in"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/auth.ts:24
+msgid "auth.mfaCode"
+msgstr "Code"

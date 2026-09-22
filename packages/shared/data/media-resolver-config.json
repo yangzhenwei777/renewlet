@@ -1,0 +1,135 @@
+{
+  "builtInProviders": [
+    {
+      "provider": "thesvg",
+      "cdnBase": "https://testingcf.jsdelivr.net/gh/glincker/thesvg@main",
+      "github": { "owner": "glincker", "repo": "thesvg", "branch": "main", "latestRelease": true },
+      "preferredVariants": ["default", "color"]
+    },
+    {
+      "provider": "selfhst",
+      "cdnBase": "https://testingcf.jsdelivr.net/gh/selfhst/icons@main",
+      "github": { "owner": "selfhst", "repo": "icons", "branch": "main", "latestRelease": false },
+      "preferredVariants": ["default", "light", "dark"]
+    },
+    {
+      "provider": "dashboardIcons",
+      "cdnBase": "https://testingcf.jsdelivr.net/gh/homarr-labs/dashboard-icons@main",
+      "github": { "owner": "homarr-labs", "repo": "dashboard-icons", "branch": "main", "latestRelease": false },
+      "preferredVariants": ["default", "light", "dark"]
+    }
+  ],
+  "auto": {
+    "planSuffixWords": ["pro", "plus", "premium", "plan", "subscription", "monthly", "yearly", "annual"]
+  },
+  "search": {
+    "minReducedQueryLength": 3,
+    "modifierSuffixWords": ["pro", "plus", "premium", "plan", "subscription", "monthly", "yearly", "annual", "startup", "live", "free", "team", "teams", "business", "enterprise", "personal", "student", "family"]
+  },
+  "candidateGroups": {
+    "searchFaviconReserve": 4
+  },
+  "limits": {
+    "defaultCandidates": 32,
+    "maxCandidates": 48,
+    "maxItems": 100,
+    "maxCandidateDomains": 16
+  },
+  "rateLimit": {
+    "defaultMaxRequests": 30,
+    "defaultWindowMs": 60000
+  },
+  "scores": {
+    "exact": 1,
+    "prefix": 0.9,
+    "contains": 0.7,
+    "allParts": 0.55,
+    "subsequence": 0.35,
+    "slugExactBoost": 0.3,
+    "slugPrefixBoost": 0.1,
+    "strongThreshold": 0.9,
+    "mediumThreshold": 0.7
+  },
+  "favicon": {
+    "fallbackTlds": {
+      "logo": ["com", "io", "co", "app", "org"],
+      "icon": ["com", "io", "co"]
+    },
+    "providers": [
+      { "provider": "site", "urlTemplate": "https://{domain}/favicon.ico" },
+      { "provider": "site", "urlTemplate": "https://{domain}/apple-touch-icon.png" },
+      { "provider": "google-s2", "urlTemplate": "https://www.google.com/s2/favicons?domain={domain}&sz=128" },
+      { "provider": "duckduckgo", "urlTemplate": "https://icons.duckduckgo.com/ip3/{domain}.ico" }
+    ],
+    "explicitProviders": [
+      { "provider": "site", "urlTemplate": "https://{domain}/favicon.ico" },
+      { "provider": "site", "urlTemplate": "https://{domain}/favicon.svg" },
+      { "provider": "site", "urlTemplate": "https://{domain}/icon.svg" },
+      { "provider": "site", "urlTemplate": "https://{domain}/icon-32x32.png" },
+      { "provider": "site", "urlTemplate": "https://{domain}/apple-touch-icon.png" },
+      { "provider": "google-s2", "urlTemplate": "https://www.google.com/s2/favicons?domain={domain}&sz=128" },
+      { "provider": "duckduckgo", "urlTemplate": "https://icons.duckduckgo.com/ip3/{domain}.ico" }
+    ],
+    "knownDomains": {
+      "netflix": "netflix.com",
+      "spotify": "spotify.com",
+      "youtube": "youtube.com",
+      "github": "github.com",
+      "notion": "notion.so",
+      "figma": "figma.com",
+      "slack": "slack.com",
+      "discord": "discord.com",
+      "dropbox": "dropbox.com",
+      "adobe": "adobe.com",
+      "microsoft": "microsoft.com",
+      "google": "google.com",
+      "amazon": "amazon.com",
+      "apple": "apple.com",
+      "twitter": "twitter.com",
+      "linkedin": "linkedin.com",
+      "zoom": "zoom.us",
+      "openai": "openai.com",
+      "chatgpt": "openai.com",
+      "copilot": "github.com",
+      "cursor": "cursor.sh",
+      "vercel": "vercel.com",
+      "railway": "railway.app",
+      "heroku": "heroku.com",
+      "digitalocean": "digitalocean.com",
+      "aws": "aws.amazon.com",
+      "cloudflare": "cloudflare.com",
+      "stripe": "stripe.com",
+      "paypal": "paypal.com",
+      "twitch": "twitch.tv",
+      "hulu": "hulu.com",
+      "disney": "disneyplus.com",
+      "hbo": "hbomax.com",
+      "paramount": "paramountplus.com",
+      "peacock": "peacocktv.com",
+      "crunchyroll": "crunchyroll.com",
+      "bilibili": "bilibili.com",
+      "iqiyi": "iqiyi.com",
+      "youku": "youku.com",
+      "tencent": "qq.com",
+      "weixin": "weixin.qq.com",
+      "wechat": "weixin.qq.com",
+      "alipay": "alipay.com",
+      "jd": "jd.com",
+      "taobao": "taobao.com",
+      "meituan": "meituan.com",
+      "didi": "didiglobal.com",
+      "baidu": "baidu.com",
+      "bytedance": "bytedance.com",
+      "douyin": "douyin.com",
+      "tiktok": "tiktok.com",
+      "credit": "visa.com",
+      "visa": "visa.com",
+      "mastercard": "mastercard.com",
+      "bank": "chase.com",
+      "crypto": "bitcoin.org",
+      "bitcoin": "bitcoin.org",
+      "ethereum": "ethereum.org",
+      "usdt": "tether.to"
+    }
+  }
+}

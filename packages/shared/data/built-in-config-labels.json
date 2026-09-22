@@ -1,0 +1,454 @@
+{
+  "categories": [
+    {
+      "value": "productivity",
+      "key": "category.productivity",
+      "labels": {
+        "zh-CN": "生产力",
+        "en-US": "Productivity"
+      }
+    },
+    {
+      "value": "entertainment",
+      "key": "category.entertainment",
+      "labels": {
+        "zh-CN": "娱乐",
+        "en-US": "Entertainment"
+      }
+    },
+    {
+      "value": "lifestyle",
+      "key": "category.lifestyle",
+      "labels": {
+        "zh-CN": "生活",
+        "en-US": "Lifestyle"
+      }
+    },
+    {
+      "value": "finance",
+      "key": "category.finance",
+      "labels": {
+        "zh-CN": "理财",
+        "en-US": "Finance"
+      }
+    },
+    {
+      "value": "streaming",
+      "key": "category.streaming",
+      "labels": {
+        "zh-CN": "影音流媒体",
+        "en-US": "Streaming"
+      }
+    },
+    {
+      "value": "music",
+      "key": "category.music",
+      "labels": {
+        "zh-CN": "音乐",
+        "en-US": "Music"
+      }
+    },
+    {
+      "value": "gaming",
+      "key": "category.gaming",
+      "labels": {
+        "zh-CN": "游戏",
+        "en-US": "Gaming"
+      }
+    },
+    {
+      "value": "utilities",
+      "key": "category.utilities",
+      "labels": {
+        "zh-CN": "公用事业",
+        "en-US": "Utilities"
+      }
+    },
+    {
+      "value": "cloud_storage",
+      "key": "category.cloudStorage",
+      "labels": {
+        "zh-CN": "云存储",
+        "en-US": "Cloud Storage"
+      }
+    },
+    {
+      "value": "education",
+      "key": "category.education",
+      "labels": {
+        "zh-CN": "教育",
+        "en-US": "Education"
+      }
+    },
+    {
+      "value": "health_fitness",
+      "key": "category.healthFitness",
+      "labels": {
+        "zh-CN": "健康健身",
+        "en-US": "Health & Fitness"
+      }
+    },
+    {
+      "value": "food_dining",
+      "key": "category.foodDining",
+      "labels": {
+        "zh-CN": "餐饮",
+        "en-US": "Food & Dining"
+      }
+    },
+    {
+      "value": "shopping",
+      "key": "category.shopping",
+      "labels": {
+        "zh-CN": "购物",
+        "en-US": "Shopping"
+      }
+    },
+    {
+      "value": "travel",
+      "key": "category.travel",
+      "labels": {
+        "zh-CN": "旅行出行",
+        "en-US": "Travel"
+      }
+    },
+    {
+      "value": "business",
+      "key": "category.business",
+      "labels": {
+        "zh-CN": "商务",
+        "en-US": "Business"
+      }
+    },
+    {
+      "value": "communication",
+      "key": "category.communication",
+      "labels": {
+        "zh-CN": "通讯与邮件",
+        "en-US": "Communication & Email"
+      }
+    },
+    {
+      "value": "developer_tools",
+      "key": "category.developerTools",
+      "labels": {
+        "zh-CN": "开发工具",
+        "en-US": "Developer Tools"
+      }
+    },
+    {
+      "value": "design",
+      "key": "category.design",
+      "labels": {
+        "zh-CN": "设计创意",
+        "en-US": "Design"
+      }
+    },
+    {
+      "value": "ai_tools",
+      "key": "category.aiTools",
+      "labels": {
+        "zh-CN": "AI 工具",
+        "en-US": "AI Tools"
+      }
+    },
+    {
+      "value": "security_vpn",
+      "key": "category.securityVpn",
+      "labels": {
+        "zh-CN": "安全与 VPN",
+        "en-US": "Security & VPN"
+      }
+    },
+    {
+      "value": "hosting_domains",
+      "key": "category.hostingDomains",
+      "labels": {
+        "zh-CN": "域名与托管",
+        "en-US": "Domains & Hosting"
+      }
+    },
+    {
+      "value": "news_media",
+      "key": "category.newsMedia",
+      "labels": {
+        "zh-CN": "新闻媒体",
+        "en-US": "News & Media"
+      }
+    },
+    {
+      "value": "other",
+      "key": "category.other",
+      "labels": {
+        "zh-CN": "其他",
+        "en-US": "Other"
+      }
+    }
+  ],
+  "paymentMethods": [
+    {
+      "value": "alipay",
+      "key": "payment.alipay",
+      "labels": {
+        "zh-CN": "支付宝",
+        "en-US": "Alipay"
+      }
+    },
+    {
+      "value": "wechat",
+      "key": "payment.wechat",
+      "labels": {
+        "zh-CN": "微信支付",
+        "en-US": "WeChat Pay"
+      }
+    },
+    {
+      "value": "credit_card",
+      "key": "payment.creditCard",
+      "labels": {
+        "zh-CN": "信用卡",
+        "en-US": "Credit card"
+      }
+    },
+    {
+      "value": "debit_card",
+      "key": "payment.debitCard",
+      "labels": {
+        "zh-CN": "借记卡",
+        "en-US": "Debit card"
+      }
+    },
+    {
+      "value": "paypal",
+      "key": "payment.paypal",
+      "labels": {
+        "zh-CN": "PayPal",
+        "en-US": "PayPal"
+      }
+    },
+    {
+      "value": "apple_pay",
+      "key": "payment.applePay",
+      "labels": {
+        "zh-CN": "Apple Pay",
+        "en-US": "Apple Pay"
+      }
+    },
+    {
+      "value": "google_pay",
+      "key": "payment.googlePay",
+      "labels": {
+        "zh-CN": "Google Pay",
+        "en-US": "Google Pay"
+      }
+    },
+    {
+      "value": "bank_transfer",
+      "key": "payment.bankTransfer",
+      "labels": {
+        "zh-CN": "银行转账",
+        "en-US": "Bank transfer"
+      }
+    },
+    {
+      "value": "crypto",
+      "key": "payment.crypto",
+      "labels": {
+        "zh-CN": "加密货币",
+        "en-US": "Crypto"
+      }
+    },
+    {
+      "value": "direct_debit",
+      "key": "payment.directDebit",
+      "labels": {
+        "zh-CN": "直接扣款",
+        "en-US": "Direct debit"
+      }
+    },
+    {
+      "value": "money",
+      "key": "payment.money",
+      "labels": {
+        "zh-CN": "现金",
+        "en-US": "Money"
+      }
+    },
+    {
+      "value": "samsung_pay",
+      "key": "payment.samsungPay",
+      "labels": {
+        "zh-CN": "Samsung Pay",
+        "en-US": "Samsung Pay"
+      }
+    },
+    {
+      "value": "klarna",
+      "key": "payment.klarna",
+      "labels": {
+        "zh-CN": "Klarna",
+        "en-US": "Klarna"
+      }
+    },
+    {
+      "value": "amazon_pay",
+      "key": "payment.amazonPay",
+      "labels": {
+        "zh-CN": "Amazon Pay",
+        "en-US": "Amazon Pay"
+      }
+    },
+    {
+      "value": "sepa",
+      "key": "payment.sepa",
+      "labels": {
+        "zh-CN": "SEPA",
+        "en-US": "SEPA"
+      }
+    },
+    {
+      "value": "skrill",
+      "key": "payment.skrill",
+      "labels": {
+        "zh-CN": "Skrill",
+        "en-US": "Skrill"
+      }
+    },
+    {
+      "value": "sofort",
+      "key": "payment.sofort",
+      "labels": {
+        "zh-CN": "Sofort",
+        "en-US": "Sofort"
+      }
+    },
+    {
+      "value": "stripe",
+      "key": "payment.stripe",
+      "labels": {
+        "zh-CN": "Stripe",
+        "en-US": "Stripe"
+      }
+    },
+    {
+      "value": "affirm",
+      "key": "payment.affirm",
+      "labels": {
+        "zh-CN": "Affirm",
+        "en-US": "Affirm"
+      }
+    },
+    {
+      "value": "elo",
+      "key": "payment.elo",
+      "labels": {
+        "zh-CN": "Elo",
+        "en-US": "Elo"
+      }
+    },
+    {
+      "value": "facebook_pay",
+      "key": "payment.facebookPay",
+      "labels": {
+        "zh-CN": "Meta Pay",
+        "en-US": "Meta Pay"
+      }
+    },
+    {
+      "value": "giropay",
+      "key": "payment.giropay",
+      "labels": {
+        "zh-CN": "GiroPay",
+        "en-US": "GiroPay"
+      }
+    },
+    {
+      "value": "ideal",
+      "key": "payment.ideal",
+      "labels": {
+        "zh-CN": "iDEAL",
+        "en-US": "iDEAL"
+      }
+    },
+    {
+      "value": "union_pay",
+      "key": "payment.unionPay",
+      "labels": {
+        "zh-CN": "UnionPay",
+        "en-US": "UnionPay"
+      }
+    },
+    {
+      "value": "interac",
+      "key": "payment.interac",
+      "labels": {
+        "zh-CN": "Interac",
+        "en-US": "Interac"
+      }
+    },
+    {
+      "value": "paysafe",
+      "key": "payment.paysafe",
+      "labels": {
+        "zh-CN": "Paysafe",
+        "en-US": "Paysafe"
+      }
+    },
+    {
+      "value": "poli",
+      "key": "payment.poli",
+      "labels": {
+        "zh-CN": "POLi",
+        "en-US": "POLi"
+      }
+    },
+    {
+      "value": "qiwi",
+      "key": "payment.qiwi",
+      "labels": {
+        "zh-CN": "QIWI",
+        "en-US": "QIWI"
+      }
+    },
+    {
+      "value": "shop_pay",
+      "key": "payment.shopPay",
+      "labels": {
+        "zh-CN": "Shop Pay",
+        "en-US": "Shop Pay"
+      }
+    },
+    {
+      "value": "venmo",
+      "key": "payment.venmo",
+      "labels": {
+        "zh-CN": "Venmo",
+        "en-US": "Venmo"
+      }
+    },
+    {
+      "value": "verifone",
+      "key": "payment.verifone",
+      "labels": {
+        "zh-CN": "Verifone",
+        "en-US": "Verifone"
+      }
+    },
+    {
+      "value": "webmoney",
+      "key": "payment.webmoney",
+      "labels": {
+        "zh-CN": "WebMoney",
+        "en-US": "WebMoney"
+      }
+    },
+    {
+      "value": "other",
+      "key": "payment.other",
+      "labels": {
+        "zh-CN": "其他",
+        "en-US": "Other"
+      }
+    }
+  ]
+}

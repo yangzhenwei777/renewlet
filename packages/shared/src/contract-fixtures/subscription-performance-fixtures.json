@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "recipe": {
+    "idPrefix": "p",
+    "statuses": ["trial", "active", "expired", "paused", "cancelled"],
+    "categories": ["streaming", "developer_tools", "productivity", "cloud", "infrastructure"],
+    "billingCycles": ["monthly", "annual", "custom", "weekly"],
+    "currencies": ["USD", "CNY", "EUR"],
+    "paymentMethods": [null, "credit_card", "paypal", "bank_transfer"],
+    "reminderDays": [-1, 0, -2, 3],
+    "teamModulo": 4,
+    "repeatReminderModulo": 4,
+    "startDate": "2026-01-15",
+    "nextBillingDate": "2026-09-15",
+    "createdAt": "2026-08-17T00:00:00.000Z"
+  },
+  "mutations": [
+    {
+      "kind": "update",
+      "index": 1,
+      "status": "cancelled",
+      "tags": ["priority", "TEAM-1", "team-1"]
+    },
+    {
+      "kind": "renew",
+      "index": 2,
+      "status": "active",
+      "nextBillingDate": "2026-10-15"
+    },
+    {
+      "kind": "delete",
+      "index": 3
+    },
+    {
+      "kind": "create",
+      "indexFromSize": true
+    }
+  ],
+  "webBudget": {
+    "authenticatedIdleRoutePreloads": 0,
+    "subscriptionCollectionCacheEntries": 2,
+    "dataRequests": 3
+  },
+  "scenarios": [
+    {
+      "size": 10,
+      "expected": {
+        "total": 10,
+        "statusCounts": { "trial": 3, "active": 2, "expired": 1, "paused": 1, "cancelled": 3 },
+        "tagRows": 20,
+        "autoRenew": 6,
+        "repeatReminder": 3,
+        "combinedFilterIndices": [1]
+      },
+      "operationBudget": {
+        "derivedWriteBase": 6,
+        "listReadQueries": 2
+      }
+    },
+    {
+      "size": 100,
+      "expected": {
+        "total": 100,
+        "statusCounts": { "trial": 21, "active": 20, "expired": 19, "paused": 19, "cancelled": 21 },
+        "tagRows": 200,
+        "autoRenew": 51,
+        "repeatReminder": 26,
+        "combinedFilterIndices": [1]
+      },
+      "operationBudget": {
+        "derivedWriteBase": 6,
+        "listReadQueries": 2
+      }
+    },
+    {
+      "size": 1000,
+      "expected": {
+        "total": 1000,
+        "statusCounts": { "trial": 201, "active": 200, "expired": 199, "paused": 199, "cancelled": 201 },
+        "tagRows": 2000,
+        "autoRenew": 501,
+        "repeatReminder": 251,
+        "combinedFilterIndices": [1]
+      },
+      "operationBudget": {
+        "derivedWriteBase": 6,
+        "listReadQueries": 2
+      }
+    },
+    {
+      "size": 5000,
+      "expected": {
+        "total": 5000,
+        "statusCounts": { "trial": 1001, "active": 1000, "expired": 999, "paused": 999, "cancelled": 1001 },
+        "tagRows": 10000,
+        "autoRenew": 2501,
+        "repeatReminder": 1251,
+        "combinedFilterIndices": [1]
+      },
+      "operationBudget": {
+        "derivedWriteBase": 6,
+        "listReadQueries": 2
+      }
+    }
+  ]
+}

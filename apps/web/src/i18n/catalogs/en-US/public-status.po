@@ -1,0 +1,164 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-06-07 23:11+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:6
+msgid "publicStatus.headerMeta"
+msgstr "Renewlet · Updated at {time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:11
+msgid "publicStatus.moneySubtitleLocked"
+msgstr "Using locked {month} rates"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:25
+msgid "publicStatus.listLabel"
+msgstr "Public subscription list"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:31
+msgid "publicStatus.notFoundTitle"
+msgstr "Public page unavailable"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:15
+msgid "publicStatus.visibleMoneySubtitle"
+msgstr "{count} included in totals"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:28
+msgid "publicStatus.nextBillingDate"
+msgstr "Due/renewal: {date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:18
+msgid "publicStatus.upcomingSubtitle"
+msgstr "Due or renewing soon"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:14
+msgid "publicStatus.visibleCount"
+msgstr "Visible subscriptions"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:9
+msgid "publicStatus.annualTotal"
+msgstr "Annualized total"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:26
+msgid "publicStatus.startDate"
+msgstr "Start: {date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:30
+msgid "publicStatus.subscriptionDailyCostToDate"
+msgstr "Daily cost to date {amount}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:12
+msgid "publicStatus.moneySubtitleLive"
+msgstr "Summed in {currency} with live rates"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:10
+msgid "publicStatus.moneySubtitle"
+msgstr "Summed in {currency}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:33
+msgid "publicStatus.errorTitle"
+msgstr "Could not load public page"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:29
+msgid "publicStatus.subscriptionDailyAverage"
+msgstr "Daily {amount}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:8
+msgid "publicStatus.monthlyTotalSubtitle"
+msgstr "Daily {amount} · {basis}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:24
+msgid "publicStatus.emptyTitle"
+msgstr "No visible subscriptions"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:21
+msgid "publicStatus.generatedAt"
+msgstr "Updated at {time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:7
+msgid "publicStatus.monthlyTotal"
+msgstr "Monthly total"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:17
+msgid "publicStatus.upcomingCount"
+msgstr "Next 7 days"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:13
+msgid "publicStatus.ratesLoading"
+msgstr "Updating rates"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:16
+msgid "publicStatus.activeCount"
+msgstr "Active/trial"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:23
+msgid "publicStatus.truncated"
+msgstr "There are many subscriptions; only the first 500 are shown."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:5
+msgid "publicStatus.title"
+msgstr "Subscription status"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:22
+msgid "publicStatus.updatedAt"
+msgstr "Record updated: {time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:34
+msgid "publicStatus.errorDescription"
+msgstr "Refresh and try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:27
+msgid "publicStatus.purchaseDate"
+msgstr "Purchased {date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:20
+msgid "publicStatus.inactiveSubtitle"
+msgstr "Expired, paused, or cancelled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:32
+msgid "publicStatus.notFoundDescription"
+msgstr "This link does not exist, has been revoked, or has been regenerated."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:19
+msgid "publicStatus.inactiveCount"
+msgstr "Inactive"

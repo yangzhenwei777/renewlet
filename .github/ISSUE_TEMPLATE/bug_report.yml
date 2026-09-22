@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible Renewlet behavior problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include passwords, API keys, tokens, cookies, webhook URLs, or private subscription data.
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Docker / PocketBase
+        - Cloudflare Worker / D1 / R2
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Renewlet version
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the smallest deterministic steps, expected result, and actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and scale
+      description: Include browser/device, host memory/CPU, approximate subscription count, and relevant D1/R2 usage without account identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Attach only the relevant error and resource counters after removing all secrets and business content.

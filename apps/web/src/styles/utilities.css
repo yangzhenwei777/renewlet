@@ -1,0 +1,612 @@
+/* 全局工具类承载移动端视口、safe-area 和弹层滚动策略；这些约束需要和 e2e/mobile-* 基线同步演进。 */
+@layer utilities {
+  /* 粗指针命中区通过透明伪元素扩展，不能改变按钮的可见盒子、对齐基线或弹窗关闭图标样式。 */
+  @media (pointer: coarse) {
+    .touch-target::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      content: "";
+      transform: translate(-50%, -50%);
+    }
+
+    .dialog-close-touch-target::after {
+      top: 0;
+      right: 0;
+      left: auto;
+      transform: none;
+    }
+  }
+
+  /* 页面级容器只负责视口与横向裁剪；业务滚动区必须显式确定归属，避免页面与弹层形成嵌套滚动。 */
+  .app-page {
+    min-height: var(--app-viewport-height);
+    overflow-x: clip;
+  }
+
+  /* 主内容区叠加 safe area，避免浏览器底部工具栏或异形屏遮挡操作区。 */
+  .app-main {
+    padding: 1.5rem calc(1rem + env(safe-area-inset-right))
+      calc(2rem + env(safe-area-inset-bottom))
+      calc(1rem + env(safe-area-inset-left));
+  }
+
+  /* 认证页保持单面板 Flex 居中，使移动端视口高度与 safe area 约束维持单一布局链。 */
+  .auth-page {
+    min-height: var(--app-viewport-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-x: clip;
+    padding: calc(1.5rem + env(safe-area-inset-top))
+      calc(1rem + env(safe-area-inset-right))
+      calc(1.5rem + env(safe-area-inset-bottom))
+      calc(1rem + env(safe-area-inset-left));
+  }
+
+  /* 认证面板自己补 safe area，保证 setup/login 在独立页和嵌套容器里都不贴边。 */
+  .auth-form-panel {
+    padding: calc(2rem + env(safe-area-inset-top))
+      calc(1rem + env(safe-area-inset-right))
+      calc(2rem + env(safe-area-inset-bottom))
+      calc(1rem + env(safe-area-inset-left));
+  }
+
+  /* 通用 Dialog 只限制外框，滚动由业务内容区承担，避免表单弹层出现嵌套滚动。 */
+  .h5-dialog-panel {
+    width: calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-height: calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  /* Dialog frame 必须提供显式高度，内部 minmax(0,1fr) 才能收缩并保持 footer 可见。 */
+  .h5-dialog-frame {
+    height: min(90vh, calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    max-height: calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    min-height: 0;
+  }
+
+  /* 短动作 Dialog 只跟随内容收高；继续套长表单 90vh frame 会在 footer 后撑出空白。 */
+  .h5-dialog-auto-frame {
+    min-height: 0;
+  }
+
+  /* AI 输入页要固定外框但不能像草稿审阅那样铺满 90vh；内层 tabs 才是滚动主人。 */
+  .h5-ai-recognition-input-dialog-frame {
+    height: min(40rem, calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    max-height: calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    min-height: 0;
+  }
+
+  /* H5 AI 识别承载键盘、上传、草稿和 sticky footer；Grid 高度链必须吃 visual viewport 而不是普通 100vh。 */
+  .h5-ai-recognition-workbench-frame {
+    display: grid;
+    gap: 0;
+    width: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-width: 32rem;
+    height: calc(var(--app-viewport-height) - 0.5rem - env(safe-area-inset-top));
+    max-height: calc(var(--app-viewport-height) - 0.5rem - env(safe-area-inset-top));
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+
+  /* 订阅弹窗用 Grid 而非 Flex：header 固定、表单轨道可压缩，footer 不再靠魔法高度猜位置。 */
+  .h5-subscription-dialog-panel {
+    display: grid;
+    gap: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* 表单内部再切一层 scroll/footer，避免长字段列表滚动时把操作按钮卷走。 */
+  .h5-subscription-dialog-form {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  /* Grid 滚动子项必须显式允许收缩；否则 Safari 会按内容最小高度扩张并绕过 overflow。 */
+  .h5-subscription-dialog-scroll {
+    min-height: 0;
+  }
+
+  /* 设置管理弹窗用 Grid 固定 header/footer，body 独占可收缩轨道，短视口下不会把操作区顶出屏幕。 */
+  .h5-settings-manager-dialog-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* 导入弹窗会承载虚拟列表、嵌套 Logo sheet 和底部进度；Grid 轨道固定住 header/footer，避免大批量预览把操作区顶走。 */
+  .h5-import-dialog-panel {
+    display: grid;
+    gap: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* 桌面浮层仍走 Radix popper，宽高只兜底 viewport，移动端会被 sheet 规则彻底接管。 */
+  .h5-floating-content {
+    max-width: calc(100vw - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-height: min(24rem, calc(var(--app-viewport-height) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  }
+
+  /* Media Candidate 弹层只约束外框；搜索区和结果滚动区各自接在同一条高度链上。 */
+  .media-candidate-popover {
+    --media-candidate-popover-max-height: 28rem;
+    --media-candidate-popover-height: min(
+      var(--media-candidate-popover-max-height),
+      var(--radix-popover-content-available-height, var(--media-candidate-popover-max-height)),
+      calc(var(--app-viewport-height, 100vh) - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+    );
+    display: grid;
+    height: var(--media-candidate-popover-height);
+    max-height: var(--media-candidate-popover-height);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .media-candidate-popover-icon {
+    --media-candidate-popover-max-height: 21rem;
+  }
+
+  .media-candidate-popover-import {
+    --media-candidate-popover-max-height: 34rem;
+  }
+
+  .media-candidate-popover-panel,
+  .media-candidate-search-panel {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .media-candidate-scroll-viewport {
+    min-height: 0;
+    flex: 1 1 0;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scroll-padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 最后一行的呼吸位属于滚动内容，不能塞在 scrollport 上，否则外框裁切时仍会遮底。 */
+  .media-candidate-scroll-content {
+    display: grid;
+    gap: 0.75rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+
+  .media-candidate-scroll-content:has(> .media-candidate-message:only-child) {
+    margin: auto 0;
+    padding-bottom: 0;
+  }
+
+  /* Provider tag 贴在结果滚动区里，横向滚动必须自己吃触控手势，不能把外层 sheet 撑宽。 */
+  .media-provider-filter-scroll {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .media-provider-filter-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .media-candidate-message {
+    margin: auto 0;
+  }
+
+  .media-candidate-tabs {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .media-candidate-tabs > [role="tablist"] {
+    flex: 0 0 auto;
+  }
+
+  .media-candidate-tab-content {
+    min-height: 0;
+    flex: 1 1 0;
+    flex-direction: column;
+  }
+
+  .media-candidate-tab-content[data-state="active"] {
+    display: flex;
+  }
+
+  .media-candidate-tab-content[data-state="inactive"] {
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    /* 桌面 Logo 弹层跟随结果收高；移动端固定 sheet 高度在窄屏规则里单独接管。 */
+    .media-candidate-popover-logo {
+      height: auto;
+      max-height: var(--media-candidate-popover-height);
+    }
+
+    .media-candidate-popover-logo .media-candidate-scroll-viewport {
+      flex: 0 1 auto;
+      max-height: calc(var(--media-candidate-popover-height) - 7.5rem);
+    }
+
+    .media-candidate-popover-logo .media-candidate-scroll-content {
+      padding-bottom: 0;
+    }
+  }
+
+  /* 共享滚动容器统一开启 iOS 惯性滚动，别在每个 sheet/list 里各写一遍祖传咒语。 */
+  .h5-mobile-sheet-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Drawer 高度用 dvh 和应用视口双保险，避开移动端地址栏把底部抽屉截半截。 */
+  .h5-drawer-panel {
+    max-height: min(85dvh, calc(var(--app-viewport-height) - 3rem - env(safe-area-inset-top)));
+  }
+
+  /* 通知详情比普通 drawer 更短，保留上下文露出；全屏详情在 H5 上反而像跳页。 */
+  .h5-notification-history-detail-drawer {
+    max-height: min(78dvh, calc(var(--app-viewport-height) - 4rem - env(safe-area-inset-top)));
+  }
+
+  /* 底部保存栏吃 safe area，z-index 40 低于弹层，别让它在 Dialog 上抢戏。 */
+  .h5-bottom-bar {
+    padding:
+      1rem calc(1rem + env(safe-area-inset-right))
+      calc(1rem + env(safe-area-inset-bottom))
+      calc(1rem + env(safe-area-inset-left));
+  }
+
+  /* 12rem 覆盖按钮、提示文案和安全区的最坏组合；这是避免最后一项被固定栏压住的垫片。 */
+  .h5-bottom-bar-space {
+    padding-bottom: calc(12rem + env(safe-area-inset-bottom));
+  }
+
+  /* Recharts 外框承接焦点 ring，SVG 子节点拿焦点时别在扇区上画零碎蓝框。 */
+  .recharts-frame {
+    border-radius: calc(var(--radius) - 2px);
+    transition: box-shadow 150ms ease;
+  }
+
+  /* Recharts 3 的 Pie 会让带 tabindex 的 SVG 子节点拿到焦点；默认方框很突兀，键盘态统一抬到整站 ring。 */
+  .recharts-frame :is(.recharts-surface, .recharts-layer, .recharts-pie, .recharts-pie-sector, .recharts-sector, [tabindex]):focus {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .recharts-frame:has(.recharts-surface:focus-visible) {
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--ring));
+  }
+
+  @media (min-width: 640px) {
+    .app-main {
+      padding: 2rem 1.5rem;
+    }
+
+    .auth-page {
+      padding: 1.5rem;
+    }
+
+    .auth-form-panel {
+      padding: 1.5rem;
+    }
+
+    .h5-bottom-bar {
+      padding: 1rem;
+    }
+
+    .h5-bottom-bar-space {
+      padding-bottom: 6rem;
+    }
+  }
+
+  @media (max-width: 767px) {
+    /* visual viewport 顶部偏移来自运行时，专治 iOS 键盘/地址栏把 fixed Dialog 顶错位。 */
+    .h5-dialog-frame,
+    .h5-dialog-auto-frame,
+    .h5-ai-recognition-input-dialog-frame,
+    .h5-ai-recognition-workbench-frame {
+      top: calc(var(--app-visual-viewport-offset-top) + 1rem + env(safe-area-inset-top));
+      bottom: auto;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    .h5-ai-recognition-workbench-frame {
+      top: calc(var(--app-visual-viewport-offset-top) + 0.25rem + env(safe-area-inset-top));
+    }
+
+    /* 65 夹在父 Dialog(50) 和 mobile sheet(70) 中间，遮罩只截 sheet 外点击，不盖住真正内容。 */
+    .h5-mobile-overlay-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 65;
+      display: block;
+      background: hsl(0 0% 0% / 0.6);
+    }
+
+    /* 父 Dialog 必须放开 overflow，否则内部 sheet 的遮罩和圆角会被祖先裁掉。 */
+    .h5-dialog-panel:has([data-mobile-overlay-backdrop]) {
+      overflow: visible;
+    }
+
+    /* Radix 仍负责 listbox/menu 语义；Vaul 接管位移，Popper wrapper 只保留底部定位世界。 */
+    [data-radix-popper-content-wrapper]:has(> [data-vaul-drawer].h5-mobile-sheet-content) {
+      position: fixed !important;
+      inset: auto 0 0 0 !important;
+      z-index: 70 !important;
+      width: 100vw !important;
+      min-width: 0 !important;
+      max-width: 100vw !important;
+      transform: none !important;
+    }
+
+    /* 70 是移动端临时层最高业务面；transform 留给 Vaul 拖拽，visual viewport 只用 translate 叠加。 */
+    .h5-mobile-sheet-content {
+      position: fixed !important;
+      inset: auto 0 0 0 !important;
+      z-index: 70 !important;
+      width: calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right)) !important;
+      max-width: 32rem !important;
+      margin-right: auto;
+      margin-left: auto;
+      overflow: hidden;
+      border-radius: var(--radius) var(--radius) 0 0 !important;
+      border-right-width: 1px;
+      border-bottom-width: 0;
+      border-left-width: 1px;
+      box-shadow: 0 -18px 48px -24px hsl(0 0% 0% / 0.72);
+      translate:
+        0
+        calc(var(--app-visual-viewport-offset-top) + var(--app-viewport-height) - var(--app-layout-viewport-height)) !important;
+      transform-origin: bottom center !important;
+    }
+
+    /* Drawer 也吃 visual viewport 偏移，不然软键盘出现时它会留在旧世界线底部。 */
+    .h5-drawer-panel {
+      translate:
+        0
+        calc(var(--app-visual-viewport-offset-top) + var(--app-viewport-height) - var(--app-layout-viewport-height));
+    }
+
+    /* compact 给短菜单，56dvh 留出父 Dialog 上下文；全屏菜单别装成系统设置页。 */
+    .h5-mobile-sheet-compact {
+      height: auto;
+      max-height: min(56dvh, calc(var(--app-viewport-height) - 4rem - env(safe-area-inset-top)));
+    }
+
+    /* 列表型 compact 要有最低高度，否则选项少时把触控面压得像抽奖券。 */
+    .h5-mobile-sheet-compact.h5-mobile-sheet-list,
+    .h5-mobile-sheet-compact.h5-mobile-menu-content {
+      min-height: min(14rem, calc(var(--app-viewport-height) - 4rem - env(safe-area-inset-top)));
+    }
+
+    /* large 是搜索/长列表的上限，不是固定高；内容少时仍让它自然收起。 */
+    .h5-mobile-sheet-large {
+      height: auto;
+      max-height: min(82dvh, calc(var(--app-viewport-height) - 3.5rem - env(safe-area-inset-top)));
+    }
+
+    /* 列表 sheet 横向留白交给容器，选项本身才能用整齐的 3rem 触控节奏。 */
+    .h5-mobile-sheet-list {
+      padding-right: 0.5rem;
+      padding-left: 0.5rem;
+    }
+
+    .h5-mobile-sheet-handle {
+      width: 3rem !important;
+      height: 0.375rem !important;
+      margin: 0.75rem auto 0.25rem !important;
+      border-radius: 999px !important;
+      background: hsl(var(--muted-foreground) / 0.32) !important;
+    }
+
+    /* 移动端滚动统一交给内部 viewport，sheet 外框高度不跟列表内容一起抽风。 */
+    .h5-mobile-select-viewport,
+    .h5-mobile-menu-content,
+    .h5-mobile-searchable-select-command {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Radix Select 的滚动箭头在 H5 会挤压 viewport，边界显隐一变列表就抖，干掉。 */
+    .h5-mobile-select-scroll-button {
+      display: none !important;
+    }
+
+    /* 7rem/8rem 是抓手、内边距和 safe area 的预算；别把列表算到屏幕外再装无辜。 */
+    .h5-mobile-sheet-compact .h5-mobile-select-viewport,
+    .h5-mobile-sheet-compact.h5-mobile-menu-content,
+    .h5-mobile-sheet-compact .h5-mobile-searchable-select-command {
+      max-height: min(48dvh, calc(var(--app-viewport-height) - 7rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    }
+
+    .h5-mobile-sheet-large .h5-mobile-select-viewport,
+    .h5-mobile-sheet-large.h5-mobile-menu-content,
+    .h5-mobile-sheet-large .h5-mobile-searchable-select-command {
+      max-height: min(68dvh, calc(var(--app-viewport-height) - 8rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    }
+
+    /* 搜索型 Select 固定命令面板高度，过滤结果只换内部列表，外框不跟着跳舞。 */
+    .h5-mobile-sheet-large .h5-mobile-searchable-select-command {
+      height: min(68dvh, calc(var(--app-viewport-height) - 8rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    }
+
+    /* Command.List 继承父级高度，禁用 max-height 是为了不让两层滚动条打架。 */
+    .h5-mobile-searchable-select-list {
+      min-height: 0;
+      flex: 1 1 auto;
+      max-height: none !important;
+    }
+
+    /* Logo 搜索/已上传共用固定外框；底部安全区只归内部滚动内容，避免外框和内容重复留白。 */
+    .h5-logo-sheet {
+      display: flex !important;
+      height: min(26rem, calc(var(--app-viewport-height) - 3.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))) !important;
+      flex-direction: column;
+      padding-bottom: 0 !important;
+    }
+
+    /* 结果视口 flex-basis:0，内容状态只在内部滚动，不参与重新计算 sheet 高度。 */
+    .h5-logo-sheet-results {
+      min-height: 0;
+      flex: 1 1 0;
+      max-height: none !important;
+    }
+
+    /* 导入 Logo 编辑嵌在导入 Dialog 里，H5 需要按 visual viewport / safe area 给长列表更多滚动空间。 */
+    .h5-import-logo-sheet {
+      --h5-import-logo-sheet-height: calc(var(--app-viewport-height) - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+      height: var(--h5-import-logo-sheet-height) !important;
+      max-height: var(--h5-import-logo-sheet-height) !important;
+    }
+
+    @supports (height: 100dvh) {
+      .h5-import-logo-sheet {
+        --h5-import-logo-sheet-height: min(92dvh, calc(var(--app-viewport-height) - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+      }
+    }
+
+    .h5-import-logo-panel,
+    .h5-import-logo-tabs,
+    .h5-logo-link-panel {
+      min-height: 0;
+      flex: 1 1 auto;
+    }
+
+    .h5-import-logo-results {
+      min-height: 8rem;
+    }
+
+    /* 输入行预留 2px ring 空间，别再用 overflow:hidden 把 focus 样式裁成半截。 */
+    .h5-logo-search-input-row {
+      margin: -0.125rem;
+      padding: 0.125rem;
+    }
+
+    /* Radix Select 会写内联宽高；H5 sheet 要吃满屏宽，只能用 !important 抢回控制权。 */
+    .h5-mobile-select-viewport {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: auto !important;
+      padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    }
+
+    .h5-mobile-menu-content {
+      padding: 0.5rem 0.5rem calc(0.75rem + env(safe-area-inset-bottom));
+    }
+
+    /* 3rem 是移动端最小可点节奏，低于它就不是精致，是难点。 */
+    .h5-mobile-option-item {
+      min-height: 3rem;
+      border-radius: calc(var(--radius) - 2px);
+      padding-right: 1rem !important;
+      padding-left: 1rem !important;
+      font-size: 1rem;
+      line-height: 1.5rem;
+    }
+
+    /* leading 版本给勾选图标和缩进 affordance 留坑，纯文本项别吃这 3rem。 */
+    .h5-mobile-option-item-leading {
+      padding-left: 3rem !important;
+    }
+
+    /* 选中/高亮统一压回 foreground，避免 Command/Radix 默认色在移动端看成禁用态。 */
+    .h5-mobile-option-item[data-state="checked"],
+    .h5-mobile-option-item[data-selected="true"] {
+      background: hsl(var(--primary) / 0.15) !important;
+      color: hsl(var(--foreground)) !important;
+    }
+
+    .h5-mobile-option-item[data-highlighted],
+    .h5-mobile-option-item:focus {
+      background: hsl(var(--primary) / 0.1) !important;
+      color: hsl(var(--foreground)) !important;
+    }
+
+    /* data-disabled="false" 是 Radix/Command 的现实产物，选择器必须精确，否则启用项会被灰掉。 */
+    .h5-mobile-option-item[data-disabled]:not([data-disabled="false"]),
+    .h5-mobile-option-item[aria-disabled="true"] {
+      color: hsl(var(--muted-foreground)) !important;
+      opacity: 0.5;
+    }
+
+    /* 日历 sheet 强制 7 列 Grid，表格默认布局在窄屏会把日期按钮挤成奇怪的长条。 */
+    .h5-mobile-sheet-calendar {
+      width: min(100vw, 32rem) !important;
+      padding-right: 1rem !important;
+      padding-left: 1rem !important;
+    }
+
+    /* react-day-picker 输出 table 结构；这里先统一宽度，后面再拆成可控的 Grid 周行。 */
+    .h5-mobile-sheet-calendar .h5-calendar-root,
+    .h5-mobile-sheet-calendar .h5-calendar-months,
+    .h5-mobile-sheet-calendar .h5-calendar-month,
+    .h5-mobile-sheet-calendar .h5-calendar-month-caption,
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid,
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid thead,
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid tbody {
+      width: 100%;
+    }
+
+    /* 把 table 内层改成 block 是为了让 week 行的 Grid 真正接管列宽，别让浏览器表格算法插手。 */
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid,
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid thead,
+    .h5-mobile-sheet-calendar .h5-calendar-month-grid tbody {
+      display: block;
+    }
+
+    /* repeat(7,minmax(0,1fr)) 保证每周七列等宽，长本地化星期名也不能把列撑爆。 */
+    .h5-mobile-sheet-calendar .h5-calendar-weekdays,
+    .h5-mobile-sheet-calendar .h5-calendar-week {
+      display: grid !important;
+      width: 100%;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 0.25rem;
+    }
+
+    /* 日期格自己居中，按钮负责正方形触控目标；职责混了就会出现椭圆日期。 */
+    .h5-mobile-sheet-calendar .h5-calendar-weekday,
+    .h5-mobile-sheet-calendar .h5-calendar-day {
+      display: flex;
+      width: 100% !important;
+      min-width: 0;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .h5-mobile-sheet-calendar .h5-calendar-day-button {
+      width: min(100%, 2.75rem);
+      height: auto;
+      min-height: 2.5rem;
+      aspect-ratio: 1 / 1;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .auth-form-panel {
+      padding: 3rem;
+    }
+  }
+
+  /* 隐藏滚动条只用于横向/装饰列表；主体滚动不许用它，用户会找不到可滚动边界。 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+}

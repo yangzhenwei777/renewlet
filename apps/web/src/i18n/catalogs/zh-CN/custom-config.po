@@ -1,0 +1,119 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: zh-CN\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:11
+msgid "customConfig.enabledCount"
+msgstr "{enabled}/{total} 已启用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:7
+msgid "customConfig.labelZhPlaceholder"
+msgstr "中文名称"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:14
+msgid "customConfig.dragSortOnly"
+msgstr "仅支持拖拽排序"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:22
+msgid "customConfig.saveNamed"
+msgstr "保存「{label}」"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:16
+msgid "customConfig.totalItems"
+msgstr "共 {count} 项"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:21
+msgid "customConfig.deleteNamed"
+msgstr "删除「{label}」"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:24
+msgid "customConfig.confirmDeleteTitle"
+msgstr "删除「{label}」？"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:23
+msgid "customConfig.cancelEditNamed"
+msgstr "取消编辑「{label}」"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:19
+msgid "customConfig.toggleNamed"
+msgstr "启用或停用「{label}」"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:5
+msgid "customConfig.iconLabel"
+msgstr "图标："
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:25
+msgid "customConfig.confirmDeleteDescription"
+msgstr "已有订阅数据会保留；该选项将不再可选，并可能影响展示或筛选。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:18
+msgid "customConfig.dragNamed"
+msgstr "拖动「{label}」排序"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:15
+msgid "customConfig.dragSort"
+msgstr "拖拽排序"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:13
+msgid "customConfig.dragSortEnabled"
+msgstr "拖拽排序 · {enabled}/{total} 已启用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:10
+msgid "customConfig.empty"
+msgstr "暂无配置项"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:17
+msgid "customConfig.addOption"
+msgstr "添加选项"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:12
+msgid "customConfig.srDescription"
+msgstr "管理{title}的选项、排序和启用状态。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:20
+msgid "customConfig.editNamed"
+msgstr "编辑「{label}」"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:9
+msgid "customConfig.customColorPlaceholder"
+msgstr "自定义颜色"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:8
+msgid "customConfig.labelEnPlaceholder"
+msgstr "英文名称"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/custom-config.ts:6
+msgid "customConfig.valuePlaceholder"
+msgstr "键值"

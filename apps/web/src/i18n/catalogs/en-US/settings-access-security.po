@@ -1,0 +1,179 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-09 10:47+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:11
+msgid "settings.turnstileSiteKeyPlaceholder"
+msgstr "0x4AAAA..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:6
+msgid "settings.turnstileTitle"
+msgstr "Cloudflare Turnstile"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:13
+msgid "settings.turnstileSecret"
+msgstr "Secret key"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:10
+msgid "settings.turnstileSiteKey"
+msgstr "Site key"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:36
+msgid "settings.turnstileSecretClearedDescription"
+msgstr "Turnstile verification has been turned off. Save a new Secret key before enabling it again."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:35
+msgid "settings.turnstileSecretCleared"
+msgstr "Turnstile secret cleared"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:32
+msgid "settings.turnstileSaveFailed"
+msgstr "Failed to save Turnstile configuration"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:31
+msgid "settings.turnstileSaved"
+msgstr "Turnstile configuration saved"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:26
+msgid "settings.turnstileTestFailed"
+msgstr "Turnstile configuration test failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:25
+msgid "settings.turnstileTestPassed"
+msgstr "Turnstile configuration test passed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:19
+msgid "settings.turnstileSave"
+msgstr "Save Turnstile configuration"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:20
+msgid "settings.turnstileSaving"
+msgstr "Saving..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:12
+msgid "settings.turnstileSiteKeyHelp"
+msgstr "Shown to the login page so it can render the Turnstile widget."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:16
+msgid "settings.turnstileSecretHelp"
+msgstr "Stored only on the server for Cloudflare Siteverify."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:34
+msgid "settings.turnstileIncomplete"
+msgstr "Site key and Secret key are both required to enable Turnstile."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:7
+msgid "settings.turnstileHelp"
+msgstr "When enabled, Renewlet verifies Turnstile before email/password login to reduce brute-force and credential stuffing risk; passkeys, the authenticator second step, and first-time setup are not affected."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:9
+msgid "settings.turnstileEnableHelp"
+msgstr "When enabled, both Site key and Secret key must be filled in, otherwise human verification will not take effect."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:24
+msgid "settings.turnstileTestDialogDescription"
+msgstr "Complete the verification below. Renewlet will then check whether the current Site key and Secret key work."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:18
+msgid "settings.turnstileSecretConfigured"
+msgstr "Key configured"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:15
+msgid "settings.turnstileSecretConfiguredPlaceholder"
+msgstr "Saved; leave blank to keep it unchanged"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:28
+msgid "settings.turnstileDiscard"
+msgstr "Discard changes"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:33
+msgid "settings.turnstileSaveFailedDescription"
+msgstr "Unable to save Turnstile configuration. Try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:27
+msgid "settings.turnstileTestFailedDescription"
+msgstr "Unable to complete the Turnstile configuration test. Check the Site key and Secret key and try again."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:21
+msgid "settings.turnstileTest"
+msgstr "Test Turnstile configuration"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:23
+msgid "settings.turnstileTestDialogTitle"
+msgstr "Test Turnstile configuration"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:22
+msgid "settings.turnstileTesting"
+msgstr "Testing..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:30
+msgid "settings.turnstileClearing"
+msgstr "Clearing..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:29
+msgid "settings.turnstileClearSecret"
+msgstr "Clear key"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:17
+msgid "settings.turnstileSecretKeepHelp"
+msgstr "Leave blank to keep the current key; enter a new value to replace it."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:8
+msgid "settings.turnstileEnable"
+msgstr "Require human verification for email/password login"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:4
+msgid "settings.sectionNav.accessSecurity"
+msgstr "Access security"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:5
+msgid "settings.accessSecurity"
+msgstr "Access security"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings-access-security.ts:14
+msgid "settings.turnstileSecretPlaceholder"
+msgstr "Enter the Cloudflare Turnstile Secret key"

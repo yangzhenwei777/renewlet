@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Renewlet 是一个自托管订阅账本，把订阅、续费日、预算、通知和日历放在同一个地方，支持 Docker 与 Cloudflare Workers 部署。"
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="%RENEWLET_WEBSITE_URL%" />
+    <link rel="alternate" hreflang="zh-CN" href="%RENEWLET_WEBSITE_URL%" />
+    <link rel="alternate" hreflang="en" href="%RENEWLET_WEBSITE_EN_URL%" />
+    <link rel="alternate" hreflang="x-default" href="%RENEWLET_WEBSITE_URL%" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Renewlet" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Renewlet - 自托管订阅账本" />
+    <meta
+      property="og:description"
+      content="记录订阅、续费日、预算、通知和日历。适合 VPS、NAS、homelab 和 Cloudflare Workers 长期运行。"
+    />
+    <meta property="og:url" content="%RENEWLET_WEBSITE_URL%" />
+    <meta property="og:image" content="%RENEWLET_WEBSITE_DASHBOARD_ZH_URL%" />
+    <meta property="og:image:alt" content="Renewlet 中文仪表盘，展示月度支出、近期订阅和支出分布" />
+    <meta property="og:image:width" content="1400" />
+    <meta property="og:image:height" content="900" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Renewlet - 自托管订阅账本" />
+    <meta
+      name="twitter:description"
+      content="记录订阅、续费日、预算、通知和日历。适合 VPS、NAS、homelab 和 Cloudflare Workers 长期运行。"
+    />
+    <meta name="twitter:image" content="%RENEWLET_WEBSITE_DASHBOARD_ZH_URL%" />
+    <meta name="twitter:image:alt" content="Renewlet 中文仪表盘，展示月度支出、近期订阅和支出分布" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "%RENEWLET_WEBSITE_URL%#organization",
+            "name": "Renewlet",
+            "url": "%RENEWLET_WEBSITE_URL%",
+            "logo": "%RENEWLET_WEBSITE_LOGO_URL%",
+            "sameAs": ["%RENEWLET_WEBSITE_REPOSITORY_URL%"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "%RENEWLET_WEBSITE_URL%#website",
+            "name": "Renewlet",
+            "url": "%RENEWLET_WEBSITE_URL%",
+            "inLanguage": ["zh-CN", "en"],
+            "publisher": {
+              "@id": "%RENEWLET_WEBSITE_URL%#organization"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "%RENEWLET_WEBSITE_URL%#software",
+            "name": "Renewlet",
+            "applicationCategory": "FinanceApplication",
+            "operatingSystem": "Docker, Cloudflare Workers",
+            "softwareVersion": "%RENEWLET_WEBSITE_SOFTWARE_VERSION%",
+            "url": "%RENEWLET_WEBSITE_URL%",
+            "codeRepository": "%RENEWLET_WEBSITE_REPOSITORY_URL%",
+            "license": "%RENEWLET_WEBSITE_LICENSE_URL%",
+            "description": "Renewlet 是一个自托管订阅账本，用于管理订阅、续费日、预算、通知和日历。"
+          }
+        ]
+      }
+    </script>
+    <title>Renewlet - 自托管订阅账本</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    %RENEWLET_WEBSITE_ANALYTICS_SCRIPT%
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

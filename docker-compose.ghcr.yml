@@ -1,0 +1,48 @@
+services:
+  web:
+    # GHCR 镜像入口用于无法访问 Docker Hub 的部署；运行时契约与 Docker Hub compose 保持一致。
+    image: ghcr.io/zhiyingzzhou/renewlet:latest
+    environment:
+      # PB_ENCRYPTION_KEY、CRON_SECRET 等 secret 由 .env 注入，不在 compose 中写死。
+      GOMEMLIMIT: ${GOMEMLIMIT:-128MiB}
+      TZ: ${TZ:-Asia/Shanghai}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      http_proxy: ${http_proxy:-}
+      https_proxy: ${https_proxy:-}
+      no_proxy: ${no_proxy:-}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      RENEWLET_DEMO_MODE: ${RENEWLET_DEMO_MODE:-false}
+      RENEWLET_CUSTOM_HEAD_HTML: ${RENEWLET_CUSTOM_HEAD_HTML:-}
+      PB_ENCRYPTION_KEY: ${PB_ENCRYPTION_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      BACKUPS_CRON: ${BACKUPS_CRON:-}
+      BACKUPS_CRON_MAX_KEEP: ${BACKUPS_CRON_MAX_KEEP:-3}
+      NOTIFICATION_SCHEDULER_ENABLED: ${NOTIFICATION_SCHEDULER_ENABLED:-true}
+      CRON_SECRET: ${CRON_SECRET:-}
+      NOTIFICATION_SCHEDULER_CRON: "${NOTIFICATION_SCHEDULER_CRON:-* * * * *}"
+      NOTIFICATION_CRON_WINDOW_MINUTES: ${NOTIFICATION_CRON_WINDOW_MINUTES:-2}
+      NOTIFICATION_MAX_RETRIES: ${NOTIFICATION_MAX_RETRIES:-3}
+      NOTIFICATION_STALE_SENDING_MINUTES: ${NOTIFICATION_STALE_SENDING_MINUTES:-15}
+    volumes:
+      # 命名卷适合 compose 管理；迁移到其它宿主机时需要显式备份该 volume。
+      - renewlet-pb-data:/pb_data
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: [ "CMD", "/renewlet", "healthcheck" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: ${MEM_LIMIT:-256m}
+    restart: unless-stopped
+
+volumes:
+  renewlet-pb-data:

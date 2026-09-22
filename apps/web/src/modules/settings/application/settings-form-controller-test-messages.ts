@@ -1,0 +1,25 @@
+type TestMessage = string | ((params: Record<string, unknown>) => string);
+
+export const SETTINGS_INTEGRATION_TEST_MESSAGES: Record<string, TestMessage> = {
+  "settings.publicApiCreated": "API Token 已创建",
+  "settings.publicApiCreateFailed": "API Token 创建失败",
+  "settings.publicApiCreateFailedDescription": "无法创建 API Token，请稍后重试。",
+  "settings.publicApiTokenCopied": "Token 已复制",
+  "settings.publicApiCopyFailed": "复制失败",
+  "settings.publicApiCopyFailedDescription": "当前一键复制不可用，请手动选择并复制 token。",
+  "settings.publicApiDeleted": "API Token 已删除",
+  "settings.publicApiDeleteFailed": "API Token 删除失败",
+  "settings.publicApiDeleteFailedDescription": "无法删除 API Token，请稍后重试。",
+  "settings.telegramBotCommandsConfigMissing": "请先填写并保存 Bot Token 和 Chat ID。",
+  "settings.telegramBotCommandsSaveFirst": "Telegram 凭据有未保存更改，请先保存设置。",
+  "settings.telegramBotCommandsHttpsRequired": "Telegram Webhook 需要 HTTPS 外部访问地址。",
+  "settings.telegramBotCommandsDemoDisabled": "演示模式下不能安装外部 Telegram 命令。",
+  "settings.telegramBotCommandsInstalling": "安装中...",
+  "settings.telegramBotCommandsDeleting": "删除中...",
+  "settings.telegramBotCommandsInstalled": "Telegram 查询命令已安装",
+  "settings.telegramBotCommandsInstallFailed": "Telegram 查询命令安装失败",
+  "settings.telegramBotCommandsInstallFailedDescription": "无法安装 Telegram Bot 查询命令，请检查 Bot Token、Chat ID 和 HTTPS 外部访问地址。",
+  "settings.telegramBotCommandsDeleted": "Telegram 查询命令已删除",
+  "settings.telegramBotCommandsDeleteFailed": "Telegram 查询命令删除失败",
+  "settings.telegramBotCommandsDeleteFailedDescription": "无法删除 Telegram Bot 查询命令，请稍后重试。",
+};

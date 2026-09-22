@@ -1,0 +1,9 @@
+services:
+  website:
+    # 官网 compose 只用于本地预览 Dockerfile/nginx.conf；线上官网仍走静态托管或发布流水线。
+    build:
+      context: ../..
+      dockerfile: apps/website/Dockerfile
+    ports:
+      # 宿主机 4180 避开产品默认 3000，便于同时跑官网预览和 Renewlet 应用容器。
+      - "4180:8080"

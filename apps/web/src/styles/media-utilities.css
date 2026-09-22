@@ -1,0 +1,186 @@
+/* 媒体工具样式同时服务真实订阅 Logo 与候选预览；二者语义不同，不能再共享同一套底色策略。 */
+@layer utilities {
+  /* 缩略图用独立局部 token，避免上传预览为了透明棋盘污染全局主题色。 */
+  .media-thumbnail-canvas {
+    --media-thumbnail-plate: 210 20% 98%;
+    --media-thumbnail-matte: 210 20% 97%;
+    --media-thumbnail-checker: 220 12% 42%;
+    --media-thumbnail-checker-alpha: 0.055;
+    --media-thumbnail-state-opacity: 0;
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(var(--media-thumbnail-plate)));
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.86),
+      0 1px 2px hsl(220 25% 10% / 0.04);
+  }
+
+  /* 伪元素分层：before 画棋盘，after 画状态覆盖；isolation 防止 z-index 泄到外层卡片。 */
+  .media-thumbnail-canvas::before,
+  .media-thumbnail-canvas::after {
+    position: absolute;
+    inset: 2px;
+    z-index: 0;
+    border-radius: calc(var(--radius) - 4px);
+    pointer-events: none;
+    content: "";
+  }
+
+  .media-thumbnail-canvas::before {
+    background-color: hsl(var(--media-thumbnail-matte));
+    background-image: conic-gradient(
+      hsl(var(--media-thumbnail-checker) / var(--media-thumbnail-checker-alpha)) 25%,
+      transparent 0 50%,
+      hsl(var(--media-thumbnail-checker) / var(--media-thumbnail-checker-alpha)) 0 75%,
+      transparent 0
+    );
+    background-position: center;
+    background-size: 16px 16px;
+  }
+
+  .media-thumbnail-canvas::after {
+    z-index: 1;
+    background: hsl(var(--primary) / var(--media-thumbnail-state-opacity));
+  }
+
+  /* 深色模式仍用浅底棋盘，透明 PNG 才看得清；这里不是主题色，是图像校验背景。 */
+  .dark .media-thumbnail-canvas {
+    --media-thumbnail-plate: 210 18% 95%;
+    --media-thumbnail-matte: 210 18% 94%;
+    --media-thumbnail-checker: 220 12% 36%;
+    --media-thumbnail-checker-alpha: 0.045;
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.78),
+      0 8px 18px -16px hsl(0 0% 0% / 0.62);
+  }
+
+  .media-thumbnail-canvas:hover {
+    --media-thumbnail-state-opacity: 0.035;
+  }
+
+  .media-thumbnail-canvas[aria-pressed="true"] {
+    --media-thumbnail-state-opacity: 0.045;
+  }
+
+  .media-thumbnail-canvas[aria-pressed="true"]:hover {
+    --media-thumbnail-state-opacity: 0.065;
+  }
+
+  /* 上传图多数是透明/低对比 logo，复合阴影负责从棋盘底上抠出边界。 */
+  .media-thumbnail-image {
+    filter:
+      drop-shadow(0 0 1px hsl(220 25% 5% / 0.45))
+      drop-shadow(0 1px 1px hsl(220 25% 5% / 0.2))
+      drop-shadow(0 0 1px hsl(0 0% 100% / 0.72));
+  }
+
+  /* 真实订阅 Logo 用轻 surface 保持卡片气质，黑白透明图的可见性交给图像边缘 halo。 */
+  .subscription-logo-tile {
+    position: relative;
+    isolation: isolate;
+    background: hsl(var(--card) / 0.62);
+    border-color: hsl(var(--border) / 0.86);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.72),
+      0 1px 2px hsl(220 25% 10% / 0.04);
+  }
+
+  .dark .subscription-logo-tile {
+    background: hsl(210 18% 90% / 0.88);
+    border-color: hsl(210 18% 96% / 0.22);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.64),
+      0 1px 2px hsl(0 0% 0% / 0.24);
+  }
+
+  .subscription-logo-image {
+    position: relative;
+    z-index: 1;
+    filter:
+      drop-shadow(0 0 1px hsl(220 25% 8% / 0.42))
+      drop-shadow(0 1px 1px hsl(220 25% 8% / 0.18))
+      drop-shadow(0 0 1px hsl(0 0% 100% / 0.82));
+  }
+
+  .dark .subscription-logo-image {
+    filter:
+      drop-shadow(0 0 1px hsl(220 25% 8% / 0.28))
+      drop-shadow(0 1px 1px hsl(220 25% 8% / 0.14))
+      drop-shadow(0 0 1px hsl(0 0% 100% / 0.34));
+  }
+
+  /* 字母 fallback 颜色由业务计算写入变量，CSS 只负责给它一点抗背景能力。 */
+  .subscription-logo-fallback {
+    position: relative;
+    z-index: 1;
+    color: var(--subscription-logo-fallback);
+  }
+
+  /* theme-gradient 给局部容器复刻 body 背景；设置页/面板脱离 body 时仍能保持同一主题气质。 */
+  .theme-gradient {
+    background: hsl(var(--background));
+  }
+
+  .dark[data-theme="emerald"] .theme-gradient,
+  .dark:not([data-theme]) .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(160 84% 39% / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(160 84% 45% / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  .dark[data-theme="ocean"] .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(210 90% 50% / 0.1), transparent),
+      radial-gradient(ellipse 70% 50% at 90% 90%, hsl(200 85% 55% / 0.06), transparent),
+      radial-gradient(ellipse 40% 30% at 50% 50%, hsl(220 80% 45% / 0.03), transparent),
+      hsl(var(--background));
+  }
+
+  .dark[data-theme="sunset"] .theme-gradient,
+  .dark[data-theme="lavender"] .theme-gradient,
+  .dark[data-theme="rose"] .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="emerald"]:not(.dark) .theme-gradient,
+  :not([data-theme]):not(.dark) .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(160 84% 39% / 0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(160 84% 45% / 0.04), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="ocean"]:not(.dark) .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(210 90% 50% / 0.08), transparent),
+      radial-gradient(ellipse 70% 50% at 90% 90%, hsl(200 85% 55% / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="sunset"]:not(.dark) .theme-gradient,
+  [data-theme="lavender"]:not(.dark) .theme-gradient,
+  [data-theme="rose"]:not(.dark) .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.04), transparent),
+      hsl(var(--background));
+  }
+
+  .dark[data-theme="custom"] .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.1), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary) / 0.06), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="custom"]:not(.dark) .theme-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary) / 0.05), transparent),
+      hsl(var(--background));
+  }
+}

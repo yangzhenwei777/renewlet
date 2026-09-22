@@ -1,0 +1,93 @@
+[
+  {
+    "name": "reject http scheme",
+    "url": "http://example.com/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject userinfo",
+    "url": "https://user:pass@example.com/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject localhost",
+    "url": "https://localhost/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject localhost subdomain",
+    "url": "https://service.localhost/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject private ipv4 literal",
+    "url": "https://10.0.0.1/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject octal ipv4 literal",
+    "url": "https://0177.0.0.1/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject hex ipv4 literal",
+    "url": "https://0x7f000001/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject integer ipv4 literal",
+    "url": "https://2130706433/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject ipv6 loopback",
+    "url": "https://[::1]/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject ipv6 ula",
+    "url": "https://[fd00::1]/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject ipv6 link local",
+    "url": "https://[fe80::1]/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject ipv4 mapped loopback",
+    "url": "https://[::ffff:127.0.0.1]/webhook",
+    "resolvedIps": ["93.184.216.34"],
+    "safe": false
+  },
+  {
+    "name": "reject dns private ipv4",
+    "url": "https://hooks.example/webhook",
+    "resolvedIps": ["192.168.1.10"],
+    "safe": false
+  },
+  {
+    "name": "reject empty dns result",
+    "url": "https://empty.example/webhook",
+    "resolvedIps": [],
+    "safe": false
+  },
+  {
+    "name": "allow public https",
+    "url": "https://hooks.example/webhook?topic=renewlet",
+    "resolvedIps": ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"],
+    "safe": true,
+    "expectedUrl": "https://hooks.example/webhook?topic=renewlet"
+  }
+]

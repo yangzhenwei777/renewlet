@@ -1,0 +1,4 @@
+# 本文件复制为 .dev.vars 后供本地 wrangler dev 使用；不要提交真实 secret。
+#
+# Cloudflare 运行面用 D1 保存结构化数据、R2 保存私有上传资产。
+# 部署级 SMTP 在 Worker 版刻意不支持；邮件通知请登录后在 Renewlet 设置页配置账号级 SMTP。

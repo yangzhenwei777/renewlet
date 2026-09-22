@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "types": ["vite/client"]
+  },
+  "files": [
+    "src/main.tsx",
+    "src/modules/import-export/domain/wallos-import-worker.ts",
+    "src/i18n/catalogs.d.ts"
+  ]
+}

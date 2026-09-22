@@ -1,0 +1,354 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:24
+msgid "admin.passkeyCount"
+msgstr "{count} passkeys"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:21
+msgid "admin.mfaMethodCount"
+msgstr "{count} methods"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:67
+msgid "admin.currentUserProtected"
+msgstr "You cannot disable, demote, or delete the current signed-in account"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:64
+msgid "admin.resetDescription"
+msgstr "Set a new password for {name} ({email})."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:65
+msgid "admin.resetFallback"
+msgstr "Set a new password for the user."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:8
+msgid "admin.createDescription"
+msgstr "Create an account that can sign in. The initial password will not be shown again, so confirm before submitting."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:7
+msgid "admin.createUser"
+msgstr "Create user"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:50
+msgid "admin.createFailed"
+msgstr "Create user failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:51
+msgid "admin.createFailedDescription"
+msgstr "Could not create user. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:6
+msgid "admin.subtitle"
+msgstr "Create accounts, disable accounts, and reset passwords"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:47
+msgid "admin.initialPassword"
+msgstr "Initial password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:71
+msgid "admin.validation.initialPasswordLength"
+msgstr "Initial password must be at least 8 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:46
+msgid "admin.deleting"
+msgstr "Deleting..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:42
+msgid "admin.deleteUser"
+msgstr "Delete user"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:59
+msgid "admin.deleteFailed"
+msgstr "Delete user failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:60
+msgid "admin.deleteFailedDescription"
+msgstr "Could not delete user. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:52
+msgid "admin.loadFailed"
+msgstr "Load users failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:53
+msgid "admin.loadFailedDescription"
+msgstr "Could not load users. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:17
+msgid "admin.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:61
+msgid "admin.resetSuccess"
+msgstr "Password reset"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:28
+msgid "admin.resetMfaDescription"
+msgstr "This will turn off the authenticator for {name} ({email}) and discard recovery codes. Passkeys will not be deleted."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:29
+msgid "admin.resetMfaFallback"
+msgstr "This will turn off this user's authenticator and discard recovery codes. Passkeys will not be deleted."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:36
+msgid "admin.resetPasskeysDescription"
+msgstr "This will delete all passkeys for {name} ({email}) and invalidate their current sessions."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:37
+msgid "admin.resetPasskeysFallback"
+msgstr "This will delete all passkeys for this user and invalidate their current sessions."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:43
+msgid "admin.deleteDescription"
+msgstr "This will permanently delete {name} ({email}) including account, subscriptions, settings, and uploaded files. This action cannot be undone."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:44
+msgid "admin.deleteFallback"
+msgstr "This will permanently delete this user's account, subscriptions, settings, and uploaded files. This action cannot be undone."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:19
+msgid "admin.mfaEnabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:22
+msgid "admin.passkeysEnabled"
+msgstr "Added"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:14
+msgid "admin.actions"
+msgstr "Actions"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:56
+msgid "admin.updateStatusFailed"
+msgstr "Update status failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:57
+msgid "admin.updateStatusFailedDescription"
+msgstr "Could not update status. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:54
+msgid "admin.updateRoleFailed"
+msgstr "Update role failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:55
+msgid "admin.updateRoleFailedDescription"
+msgstr "Could not update role. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:20
+msgid "admin.mfaDisabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:23
+msgid "admin.passkeysDisabled"
+msgstr "Not added"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:11
+msgid "admin.status"
+msgstr "Status"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:9
+msgid "admin.user"
+msgstr "User"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:15
+msgid "admin.roleUser"
+msgstr "User"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:49
+msgid "admin.createSuccess"
+msgstr "User created"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:58
+msgid "admin.deleteSuccess"
+msgstr "User deleted"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:5
+msgid "admin.title"
+msgstr "User management"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:45
+msgid "admin.confirmDelete"
+msgstr "Confirm delete"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:48
+msgid "admin.confirmInitialPassword"
+msgstr "Confirm password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:30
+msgid "admin.confirmResetMfa"
+msgstr "Confirm authenticator reset"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:38
+msgid "admin.confirmResetPasskeys"
+msgstr "Confirm passkey reset"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:18
+msgid "admin.banned"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:16
+msgid "admin.roleAdmin"
+msgstr "Admin"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:66
+msgid "admin.lastAdmin"
+msgstr "At least one enabled admin must remain"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:10
+msgid "admin.role"
+msgstr "Role"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:72
+msgid "admin.validation.confirmInitial"
+msgstr "Enter the initial password again"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:70
+msgid "admin.validation.emailInvalid"
+msgstr "Enter a valid email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:68
+msgid "admin.validation.nameRequired"
+msgstr "Enter a user name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:69
+msgid "admin.validation.emailRequired"
+msgstr "Enter an email address"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:12
+msgid "admin.mfa"
+msgstr "Authenticator"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:31
+msgid "admin.resetMfaSuccess"
+msgstr "Authenticator reset"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:13
+msgid "admin.passkeys"
+msgstr "Passkeys"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:39
+msgid "admin.resetPasskeysSuccess"
+msgstr "Passkeys reset"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:33
+msgid "admin.resetMfaFailedDescription"
+msgstr "Reset failed. Try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:41
+msgid "admin.resetPasskeysFailedDescription"
+msgstr "Reset failed. Try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:25
+msgid "admin.resetPassword"
+msgstr "Reset password"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:62
+msgid "admin.resetFailed"
+msgstr "Reset password failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:63
+msgid "admin.resetFailedDescription"
+msgstr "Could not reset password. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:26
+msgid "admin.resetMfa"
+msgstr "Reset authenticator"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:27
+msgid "admin.resetMfaTitle"
+msgstr "Reset authenticator?"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:32
+msgid "admin.resetMfaFailed"
+msgstr "Could not reset authenticator"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:34
+msgid "admin.resetPasskeys"
+msgstr "Reset passkeys"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:35
+msgid "admin.resetPasskeysTitle"
+msgstr "Reset passkeys?"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:40
+msgid "admin.resetPasskeysFailed"
+msgstr "Could not reset passkeys"

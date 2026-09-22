@@ -1,0 +1,158 @@
+/* base 层只接管文档根、body 和浏览器差异；组件尺寸别偷偷塞这里，后面排查会想骂人。 */
+@layer base {
+  /* 视觉视口变量由运行时写入，CSS 只消费；这是为 iOS 地址栏和软键盘留的逃生通道。 */
+  :root {
+    --app-viewport-height: 100vh;
+    --app-layout-viewport-height: 100vh;
+    --app-visual-viewport-offset-left: 0px;
+    --app-visual-viewport-offset-top: 0px;
+  }
+
+  /* 100dvh 能避开移动端 100vh 把底部裁掉的老坑；不支持时退回 100vh，至少桌面不炸。 */
+  @supports (height: 100dvh) {
+    :root {
+      --app-viewport-height: 100dvh;
+    }
+  }
+
+  /* Tailwind @apply 在 base 层统一边框 token，组件默认边界才不会混出浏览器原色。 */
+  * {
+    @apply border-border;
+  }
+
+  html {
+    min-height: 100%;
+    /* iOS 横竖屏切换会擅自放大文本；表单密度被它改了就是灾难片。 */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* #root 是唯一应用滚动上下文，Radix 锁 body 时页面才不会被二次滚动带跑。 */
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100vh;
+    height: var(--app-viewport-height);
+    overflow-y: auto;
+    overflow-x: clip;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 老浏览器不认 overflow: clip，只能退回 hidden；横向滚动条比少一点裁剪语义更糟。 */
+  @supports not (overflow: clip) {
+    #root {
+      overflow-x: hidden;
+    }
+  }
+
+  /* body 背景跟 theme-gradient 分开维护，因为登录/setup 页面不一定挂业务容器。 */
+  .dark[data-theme="emerald"] body,
+  .dark:not([data-theme]) body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(160 84% 39% / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(160 84% 45% / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  .dark[data-theme="ocean"] body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(210 90% 50% / 0.1), transparent),
+      radial-gradient(ellipse 70% 50% at 90% 90%, hsl(200 85% 55% / 0.06), transparent),
+      radial-gradient(ellipse 40% 30% at 50% 50%, hsl(220 80% 45% / 0.03), transparent),
+      hsl(var(--background));
+  }
+
+  .dark[data-theme="sunset"] body,
+  .dark[data-theme="lavender"] body,
+  .dark[data-theme="rose"] body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  /* 浅色背景透明度更克制；工具型界面不是拿来炫渐变的。 */
+  [data-theme="emerald"]:not(.dark) body,
+  :not([data-theme]):not(.dark) body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(160 84% 39% / 0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(160 84% 45% / 0.04), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="ocean"]:not(.dark) body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(210 90% 50% / 0.08), transparent),
+      radial-gradient(ellipse 70% 50% at 90% 90%, hsl(200 85% 55% / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="sunset"]:not(.dark) body,
+  [data-theme="lavender"]:not(.dark) body,
+  [data-theme="rose"]:not(.dark) body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.04), transparent),
+      hsl(var(--background));
+  }
+
+  /* 自定义主题只能依赖运行时写入的 --primary/--primary-glow，避免为每个用户生成额外 CSS。 */
+  .dark[data-theme="custom"] body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.1), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.07), transparent),
+      radial-gradient(ellipse 40% 30% at 50% 50%, hsl(var(--primary) / 0.03), transparent),
+      hsl(var(--background));
+  }
+
+  [data-theme="custom"]:not(.dark) body {
+    background: 
+      radial-gradient(ellipse 80% 50% at 20% -20%, hsl(var(--primary) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 100%, hsl(var(--primary-glow) / 0.05), transparent),
+      hsl(var(--background));
+  }
+
+  /* 只给 WebKit 滚动条上色；Firefox 走默认，别为装饰性滚动条牺牲兼容面。 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+
+  /* 减少动效偏好需要同时覆盖过渡、关键帧和程序化平滑滚动，确保 Radix 浮层与页面反馈遵循同一无动画语义。 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}

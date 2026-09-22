@@ -1,0 +1,80 @@
+[
+  {
+    "id": "github",
+    "kind": "logo",
+    "mode": "auto",
+    "name": "GitHub Copilot Pro",
+    "expectedAutoLabel": "GitHub Copilot",
+    "expectedMatchedQuery": "github copilot"
+  },
+  {
+    "id": "chatgpt",
+    "kind": "logo",
+    "mode": "auto",
+    "name": "ChatGPT Plus",
+    "expectedAutoLabel": "OpenAI (ChatGPT)",
+    "expectedMatchedQuery": "chatgpt"
+  },
+  {
+    "id": "chatgpt-search",
+    "kind": "logo",
+    "mode": "search",
+    "name": "ChatGPT Plus",
+    "limit": 8,
+    "expectedFirstBuiltInLabel": "OpenAI (ChatGPT)",
+    "expectedMatchedQuery": "chatgpt"
+  },
+  {
+    "id": "svix-startup-search",
+    "kind": "logo",
+    "mode": "search",
+    "name": "Svix Startup",
+    "limit": 8,
+    "expectedFirstFaviconProvider": "site",
+    "expectedFirstFaviconLabel": "svix.com",
+    "expectedFaviconAutoAssignable": false
+  },
+  {
+    "id": "lambdatest-live-search",
+    "kind": "logo",
+    "mode": "search",
+    "name": "LambdaTest Live",
+    "limit": 8,
+    "expectedFirstFaviconProvider": "site",
+    "expectedFirstFaviconLabel": "lambdatest.com",
+    "expectedFaviconAutoAssignable": false
+  },
+  {
+    "id": "apple",
+    "kind": "logo",
+    "mode": "auto",
+    "name": "Apple",
+    "expectedAutoLabel": "Apple",
+    "expectedMatchedQuery": "apple"
+  },
+  {
+    "id": "pro",
+    "kind": "logo",
+    "mode": "auto",
+    "name": "Pro",
+    "expectedAutoLabel": null
+  },
+  {
+    "id": "plus",
+    "kind": "logo",
+    "mode": "auto",
+    "name": "Plus",
+    "expectedAutoLabel": null
+  },
+  {
+    "id": "favicon",
+    "kind": "logo",
+    "mode": "search",
+    "name": "No Builtin Fixture",
+    "website": "https://example.com",
+    "limit": 2,
+    "expectedFirstFaviconProvider": "site",
+    "expectedFirstFaviconLabel": "example.com",
+    "expectedFaviconAutoAssignable": false
+  }
+]

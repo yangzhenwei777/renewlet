@@ -1,0 +1,37 @@
+{
+  "kind": "renewlet-export",
+  "schemaVersion": 1,
+  "exportedAt": "2026-08-01T00:00:00.000Z",
+  "data": {
+    "subscriptions": [
+      {
+        "id": "v0322_sub_1",
+        "name": "v0.3.22 Backup",
+        "price": "12",
+        "currency": "USD",
+        "billingCycle": "monthly",
+        "category": "developer_tools",
+        "status": "active",
+        "pinned": true,
+        "publicHidden": false,
+        "startDate": "2026-07-01",
+        "nextBillingDate": "2026-09-01",
+        "autoRenew": false,
+        "autoCalculateNextBillingDate": true,
+        "tags": [
+          "v0.3.22"
+        ],
+        "reminderDays": 3,
+        "repeatReminderEnabled": false,
+        "repeatReminderInterval": "1h",
+        "repeatReminderWindow": "72h",
+        "extra": {}
+      }
+    ],
+    "settings": {
+      "locale": "zh-CN",
+      "defaultCurrency": "USD"
+    },
+    "assets": []
+  }
+}

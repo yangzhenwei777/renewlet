@@ -1,0 +1,184 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:27
+msgid "legal.terms.scope.title"
+msgstr "1. Scope of Use"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:8
+msgid "legal.privacy.data.title"
+msgstr "1. Data We Process"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:12
+msgid "legal.privacy.usage.title"
+msgstr "2. How Data Is Used"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:30
+msgid "legal.terms.account.title"
+msgstr "2. Accounts and Data"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:33
+msgid "legal.terms.thirdParty.title"
+msgstr "3. Third-Party Services"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:15
+msgid "legal.privacy.thirdParty.title"
+msgstr "3. Third-Party Requests"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:21
+msgid "legal.privacy.control.title"
+msgstr "4. Your Control"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:36
+msgid "legal.terms.disclaimer.title"
+msgstr "4. Disclaimer"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:19
+msgid "legal.privacy.thirdParty.ai"
+msgstr "AI recognition: when you actively use AI recognition to add subscriptions, pasted text, uploaded images, and existing tag names are sent to the third-party AI platform configured in Settings."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:7
+msgid "legal.privacy.intro"
+msgstr "Renewlet does not inject custom head HTML by default. An instance operator can enable a trusted fragment with same-origin code capabilities; when you use a deployed instance, the fragment and all of its data handling are the operator's responsibility, which may be yours."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:26
+msgid "legal.terms.intro"
+msgstr "Renewlet (renewlet) is an open-source subscription management tool. This page explains the basic rules you should understand when using this project or a deployed instance."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:10
+msgid "legal.privacy.data.business"
+msgstr "Application data: subscriptions, category/payment/currency configuration, user settings, and related SQLite data."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:28
+msgid "legal.terms.scope.lawful"
+msgstr "You may use this project, including self-hosted deployments, as long as your use is lawful and compliant."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:22
+msgid "legal.privacy.control.settings"
+msgstr "You can change notification channel settings or disable notifications from Settings at any time."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:29
+msgid "legal.terms.scope.accuracy"
+msgstr "You are responsible for the accuracy of subscription, price, exchange-rate, and related data you enter. The project only provides management and display features."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:25
+msgid "legal.terms.subtitle"
+msgstr "Last updated: 2026-01-12"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:6
+msgid "legal.privacy.subtitle"
+msgstr "Last updated: 2026-08-24"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:38
+msgid "legal.terms.disclaimer.loss"
+msgstr "You are responsible for any loss caused by using this project or a deployed instance."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:17
+msgid "legal.privacy.thirdParty.icons"
+msgstr "Icon search: when you manually search for a Logo, the service name may be sent through the Renewlet backend to Apple Search API for the App Store regions you select, with US queried by default; Apple CDN icons and external favicon/logo fallback candidates may also be loaded in the browser."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:32
+msgid "legal.terms.account.operator"
+msgstr "If you use an instance operated by someone else, understand that the operator may have server and database administration access."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:23
+msgid "legal.privacy.control.selfHost"
+msgstr "If you self-host the deployment, you can manage, back up, or delete data through the PocketBase admin UI and `/pb_data`."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:24
+msgid "legal.terms.title"
+msgstr "Terms of Service"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:37
+msgid "legal.terms.disclaimer.asIs"
+msgstr "The project is provided as is, without warranties of any kind, including accuracy, timeliness, or fitness for a particular purpose."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:31
+msgid "legal.terms.account.localAuth"
+msgstr "The project uses local authentication by default. Data is stored in SQLite and the local upload directory."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:16
+msgid "legal.privacy.thirdParty.rates"
+msgstr "Exchange rates: Frankfurter, Exchange API, or FloatRates JSON Feeds can be used for rate data. If a remote source fails or has small currency gaps, other sources are tried before built-in fallback rates."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:13
+msgid "legal.privacy.usage.core"
+msgstr "To provide core features: subscription management, statistics, calendar views, and personalized settings."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:14
+msgid "legal.privacy.usage.notifications"
+msgstr "For optional notifications: when notification channels are enabled, notification content is sent to the third-party channels you configure."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:35
+msgid "legal.terms.thirdParty.responsibility"
+msgstr "Availability, rate limits, and data accuracy of third-party services are the responsibility of those services."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:9
+msgid "legal.privacy.data.account"
+msgstr "Account data: managed by PocketBase authentication, such as email and HttpOnly browser session cookies."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:11
+msgid "legal.privacy.data.files"
+msgstr "Resource files: uploaded Logo/Icon images and similar files stored locally."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:18
+msgid "legal.privacy.thirdParty.notifications"
+msgstr "Notifications: Telegram, WeCom, Webhook, SMTP email, Bark, ServerChan, and similar channels receive the notification content you configure."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:34
+msgid "legal.terms.thirdParty.features"
+msgstr "Some features request third-party services, such as exchange-rate APIs, notification channels, and icon search sites."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:20
+msgid "legal.privacy.thirdParty.customScript"
+msgstr "Operator-provided head HTML: analytics, session-recording, or other third-party scripts may collect and send page and interaction data. The instance operator is responsible for disclosure, the privacy policy, and any legally required consent signal; Renewlet includes no Clarity-specific logic or consent management platform."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:5
+msgid "legal.privacy.title"
+msgstr "Privacy Policy"

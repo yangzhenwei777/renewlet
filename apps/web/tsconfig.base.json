@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "incremental": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "useUnknownInCatchVariables": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@renewlet/shared/*": [
+        "../shared/src/*"
+      ]
+    },
+    "noImplicitAny": true,
+    "noUnusedParameters": false,
+    "skipLibCheck": true,
+    "allowJs": false,
+    "noUnusedLocals": false,
+    "strictNullChecks": true,
+    "strict": true
+  }
+}

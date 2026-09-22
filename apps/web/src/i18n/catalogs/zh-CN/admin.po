@@ -1,0 +1,354 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: zh-CN\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:24
+msgid "admin.passkeyCount"
+msgstr "{count} 个"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:21
+msgid "admin.mfaMethodCount"
+msgstr "{count} 种方式"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:67
+msgid "admin.currentUserProtected"
+msgstr "不能禁用、降级或删除当前登录账号"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:64
+msgid "admin.resetDescription"
+msgstr "为 {name}（{email}）设置新密码。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:65
+msgid "admin.resetFallback"
+msgstr "为用户设置新密码。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:8
+msgid "admin.createDescription"
+msgstr "创建一个可登录系统的账号。初始密码不会回显，请确认后再提交。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:7
+msgid "admin.createUser"
+msgstr "创建用户"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:50
+msgid "admin.createFailed"
+msgstr "创建用户失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:51
+msgid "admin.createFailedDescription"
+msgstr "创建用户失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:6
+msgid "admin.subtitle"
+msgstr "创建账号、禁用账号和重置密码"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:47
+msgid "admin.initialPassword"
+msgstr "初始密码"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:71
+msgid "admin.validation.initialPasswordLength"
+msgstr "初始密码至少需要 8 位"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:46
+msgid "admin.deleting"
+msgstr "删除中..."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:42
+msgid "admin.deleteUser"
+msgstr "删除用户"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:59
+msgid "admin.deleteFailed"
+msgstr "删除用户失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:60
+msgid "admin.deleteFailedDescription"
+msgstr "删除用户失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:52
+msgid "admin.loadFailed"
+msgstr "加载用户失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:53
+msgid "admin.loadFailedDescription"
+msgstr "加载用户失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:17
+msgid "admin.enabled"
+msgstr "启用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:61
+msgid "admin.resetSuccess"
+msgstr "密码已重置"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:28
+msgid "admin.resetMfaDescription"
+msgstr "将关闭 {name}（{email}）的身份验证器并废弃恢复码；通行密钥不会被删除。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:29
+msgid "admin.resetMfaFallback"
+msgstr "将关闭该用户的身份验证器并废弃恢复码；通行密钥不会被删除。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:36
+msgid "admin.resetPasskeysDescription"
+msgstr "将删除 {name}（{email}）的所有通行密钥，并让该用户的现有会话失效。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:37
+msgid "admin.resetPasskeysFallback"
+msgstr "将删除该用户的所有通行密钥，并让现有会话失效。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:43
+msgid "admin.deleteDescription"
+msgstr "将永久删除 {name}（{email}）的账号、订阅、设置和上传文件。此操作不可撤销。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:44
+msgid "admin.deleteFallback"
+msgstr "将永久删除该用户的账号、订阅、设置和上传文件。此操作不可撤销。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:19
+msgid "admin.mfaEnabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:22
+msgid "admin.passkeysEnabled"
+msgstr "已添加"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:14
+msgid "admin.actions"
+msgstr "操作"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:56
+msgid "admin.updateStatusFailed"
+msgstr "更新状态失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:57
+msgid "admin.updateStatusFailedDescription"
+msgstr "更新状态失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:54
+msgid "admin.updateRoleFailed"
+msgstr "更新角色失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:55
+msgid "admin.updateRoleFailedDescription"
+msgstr "更新角色失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:20
+msgid "admin.mfaDisabled"
+msgstr "未启用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:23
+msgid "admin.passkeysDisabled"
+msgstr "未添加"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:11
+msgid "admin.status"
+msgstr "状态"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:9
+msgid "admin.user"
+msgstr "用户"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:15
+msgid "admin.roleUser"
+msgstr "用户"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:49
+msgid "admin.createSuccess"
+msgstr "用户已创建"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:58
+msgid "admin.deleteSuccess"
+msgstr "用户已删除"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:5
+msgid "admin.title"
+msgstr "用户管理"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:45
+msgid "admin.confirmDelete"
+msgstr "确认删除"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:48
+msgid "admin.confirmInitialPassword"
+msgstr "确认密码"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:30
+msgid "admin.confirmResetMfa"
+msgstr "确认重置身份验证器"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:38
+msgid "admin.confirmResetPasskeys"
+msgstr "确认重置通行密钥"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:18
+msgid "admin.banned"
+msgstr "禁用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:16
+msgid "admin.roleAdmin"
+msgstr "管理员"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:66
+msgid "admin.lastAdmin"
+msgstr "至少需要保留一个启用的管理员"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:10
+msgid "admin.role"
+msgstr "角色"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:72
+msgid "admin.validation.confirmInitial"
+msgstr "请再次输入初始密码"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:70
+msgid "admin.validation.emailInvalid"
+msgstr "请输入有效邮箱"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:68
+msgid "admin.validation.nameRequired"
+msgstr "请输入用户名称"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:69
+msgid "admin.validation.emailRequired"
+msgstr "请输入邮箱"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:12
+msgid "admin.mfa"
+msgstr "身份验证器"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:31
+msgid "admin.resetMfaSuccess"
+msgstr "身份验证器已重置"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:13
+msgid "admin.passkeys"
+msgstr "通行密钥"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:39
+msgid "admin.resetPasskeysSuccess"
+msgstr "通行密钥已重置"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:33
+msgid "admin.resetMfaFailedDescription"
+msgstr "重置失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:41
+msgid "admin.resetPasskeysFailedDescription"
+msgstr "重置失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:25
+msgid "admin.resetPassword"
+msgstr "重置密码"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:62
+msgid "admin.resetFailed"
+msgstr "重置密码失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:63
+msgid "admin.resetFailedDescription"
+msgstr "重置密码失败，请稍后重试"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:26
+msgid "admin.resetMfa"
+msgstr "重置身份验证器"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:27
+msgid "admin.resetMfaTitle"
+msgstr "重置身份验证器？"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:32
+msgid "admin.resetMfaFailed"
+msgstr "重置身份验证器失败"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:34
+msgid "admin.resetPasskeys"
+msgstr "重置通行密钥"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:35
+msgid "admin.resetPasskeysTitle"
+msgstr "重置通行密钥？"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/admin.ts:40
+msgid "admin.resetPasskeysFailed"
+msgstr "重置通行密钥失败"

@@ -1,0 +1,51 @@
+services:
+  web:
+    # 本地源码构建入口：适合开发者验证 Dockerfile；正式部署建议使用 deploy/docker-compose.yml 的固定镜像。
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # PB_ENCRYPTION_KEY 必须由部署者提供 32 字符值；空值只适合首次本地试跑，不适合生产升级。
+      GOMEMLIMIT: ${GOMEMLIMIT:-128MiB}
+      TZ: ${TZ:-Asia/Shanghai}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      http_proxy: ${http_proxy:-}
+      https_proxy: ${https_proxy:-}
+      no_proxy: ${no_proxy:-}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      RENEWLET_DEMO_MODE: ${RENEWLET_DEMO_MODE:-false}
+      RENEWLET_CUSTOM_HEAD_HTML: ${RENEWLET_CUSTOM_HEAD_HTML:-}
+      PB_ENCRYPTION_KEY: ${PB_ENCRYPTION_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      BACKUPS_CRON: ${BACKUPS_CRON:-}
+      BACKUPS_CRON_MAX_KEEP: ${BACKUPS_CRON_MAX_KEEP:-3}
+      NOTIFICATION_SCHEDULER_ENABLED: ${NOTIFICATION_SCHEDULER_ENABLED:-true}
+      CRON_SECRET: ${CRON_SECRET:-}
+      NOTIFICATION_SCHEDULER_CRON: "${NOTIFICATION_SCHEDULER_CRON:-* * * * *}"
+      NOTIFICATION_CRON_WINDOW_MINUTES: ${NOTIFICATION_CRON_WINDOW_MINUTES:-2}
+      NOTIFICATION_MAX_RETRIES: ${NOTIFICATION_MAX_RETRIES:-3}
+      NOTIFICATION_STALE_SENDING_MINUTES: ${NOTIFICATION_STALE_SENDING_MINUTES:-15}
+    volumes:
+      # PocketBase SQLite、上传文件和迁移状态都在 /pb_data，重建容器时必须保留。
+      - renewlet-pb-data:/pb_data
+    ports:
+      # 容器内固定监听 3000，宿主机端口由 PORT 控制，便于反代或多实例部署。
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: [ "CMD", "/renewlet", "healthcheck" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: ${MEM_LIMIT:-256m}
+    restart: unless-stopped
+
+volumes:
+  renewlet-pb-data:

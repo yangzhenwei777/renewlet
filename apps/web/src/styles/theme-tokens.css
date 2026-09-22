@@ -1,0 +1,365 @@
+/* 主题变量是设计系统真相源：Tailwind @theme 只映射它们，组件不许绕过 token 直接认颜色。 */
+@layer base {
+  :root {
+    /* 默认 emerald 浅色主题承担未选择主题的基线，改这里等于改全站第一印象。 */
+    --background: 210 20% 98%;
+    --foreground: 220 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 12%;
+    --card-hover: 210 20% 99%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 12%;
+
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 160 84% 45%;
+
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 220 20% 30%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 220 15% 50%;
+
+    --accent: 160 50% 95%;
+    --accent-foreground: 160 84% 30%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 15%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 220 20% 91%;
+    --input: 220 20% 93%;
+    --ring: 160 84% 39%;
+
+    --radius: 0.75rem;
+
+    /* 自定义 token 被组件直接消费，不能只改 Tailwind @theme 名称。 */
+    --brand-mark: 216 31% 10%;
+    --brand-mark-foreground: 210 40% 98%;
+    --app-shadow-card: 0 1px 3px 0 hsla(220, 25%, 10%, 0.04), 0 1px 2px -1px hsla(220, 25%, 10%, 0.04);
+
+    /* 图表颜色顺序是统计图默认色板，新增颜色会改变既有分类的视觉映射。 */
+    --chart-1: 160 84% 45%;
+    --chart-2: 200 80% 50%;
+    --chart-3: 280 70% 55%;
+    --chart-4: 35 90% 55%;
+    --chart-5: 350 75% 55%;
+
+    /* 分类 token 是业务语义色，不是随手调色盘；改了会影响订阅分类的识别记忆。 */
+    --category-productivity: 200 80% 50%;
+    --category-entertainment: 280 70% 55%;
+    --category-lifestyle: 35 90% 55%;
+    --category-finance: 160 84% 45%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 30%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 96%;
+    --sidebar-accent-foreground: 220 25% 12%;
+    --sidebar-border: 220 20% 91%;
+    --sidebar-ring: 160 84% 39%;
+  }
+
+  .dark,
+  .dark[data-theme="emerald"] {
+    /* 深色默认同样落在 emerald，未设置 data-theme 的用户不该得到另一套品牌色。 */
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 18% 9%;
+    --card-foreground: 210 20% 95%;
+    --card-hover: 220 18% 12%;
+
+    --popover: 220 18% 9%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 160 84% 39%;
+    --primary-foreground: 220 20% 6%;
+    --primary-glow: 160 84% 45%;
+
+    --secondary: 220 14% 14%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 160 60% 20%;
+    --accent-foreground: 160 84% 60%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 20% 6%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 20% 6%;
+
+    --border: 220 13% 16%;
+    --input: 220 13% 16%;
+    --ring: 160 84% 39%;
+
+    /* 深色阴影只负责层级，不负责“发光”；阴影太重会把工具型界面变夜店。 */
+    --app-shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.4);
+
+    --sidebar-background: 220 18% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 14% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 13% 14%;
+    --sidebar-ring: 160 84% 39%;
+  }
+
+  /* 主题变体只替换语义 token，组件结构不能跟着主题换 CSS 分支。 */
+  .dark[data-theme="ocean"] {
+    --background: 220 25% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 22% 9%;
+    --card-foreground: 210 20% 95%;
+    --card-hover: 220 22% 12%;
+
+    --popover: 220 22% 9%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 210 90% 50%;
+    --primary-foreground: 220 25% 6%;
+    --primary-glow: 200 85% 55%;
+
+    --secondary: 220 18% 14%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 18% 14%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 210 70% 20%;
+    --accent-foreground: 200 85% 60%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 25% 6%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 25% 6%;
+
+    --border: 220 18% 16%;
+    --input: 220 18% 16%;
+    --ring: 210 90% 50%;
+
+    --app-shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.4);
+
+    --sidebar-background: 220 22% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 210 90% 50%;
+    --sidebar-primary-foreground: 220 25% 6%;
+    --sidebar-accent: 220 18% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 18% 14%;
+    --sidebar-ring: 210 90% 50%;
+  }
+
+  /* sunset/lavender/rose 复用同一暗色结构，只换强调色，避免每个主题长出一套布局债。 */
+  .dark[data-theme="sunset"] {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 18% 9%;
+    --card-foreground: 210 20% 95%;
+    --card-hover: 220 18% 12%;
+
+    --popover: 220 18% 9%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 25 95% 53%;
+    --primary-foreground: 220 20% 6%;
+    --primary-glow: 35 90% 55%;
+
+    --secondary: 220 14% 14%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 25 70% 20%;
+    --accent-foreground: 35 90% 60%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --warning: 45 92% 50%;
+    --warning-foreground: 220 20% 6%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 20% 6%;
+
+    --border: 220 13% 16%;
+    --input: 220 13% 16%;
+    --ring: 25 95% 53%;
+
+    --app-shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.4);
+
+    --sidebar-background: 220 18% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 25 95% 53%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 14% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 13% 14%;
+    --sidebar-ring: 25 95% 53%;
+  }
+
+  .dark[data-theme="lavender"] {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 18% 9%;
+    --card-foreground: 210 20% 95%;
+    --card-hover: 220 18% 12%;
+
+    --popover: 220 18% 9%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 270 70% 60%;
+    --primary-foreground: 220 20% 6%;
+    --primary-glow: 280 65% 65%;
+
+    --secondary: 220 14% 14%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 270 50% 20%;
+    --accent-foreground: 280 65% 65%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 20% 6%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 20% 6%;
+
+    --border: 220 13% 16%;
+    --input: 220 13% 16%;
+    --ring: 270 70% 60%;
+
+    --app-shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.4);
+
+    --sidebar-background: 220 18% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 270 70% 60%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 14% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 13% 14%;
+    --sidebar-ring: 270 70% 60%;
+  }
+
+  .dark[data-theme="rose"] {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+
+    --card: 220 18% 9%;
+    --card-foreground: 210 20% 95%;
+    --card-hover: 220 18% 12%;
+
+    --popover: 220 18% 9%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 340 75% 55%;
+    --primary-foreground: 220 20% 6%;
+    --primary-glow: 350 70% 60%;
+
+    --secondary: 220 14% 14%;
+    --secondary-foreground: 210 20% 85%;
+
+    --muted: 220 14% 14%;
+    --muted-foreground: 215 15% 55%;
+
+    --accent: 340 50% 20%;
+    --accent-foreground: 350 70% 65%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 20% 6%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 220 20% 6%;
+
+    --border: 220 13% 16%;
+    --input: 220 13% 16%;
+    --ring: 340 75% 55%;
+
+    --app-shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.4);
+
+    --sidebar-background: 220 18% 7%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 340 75% 55%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 14% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 220 13% 14%;
+    --sidebar-ring: 340 75% 55%;
+  }
+
+  /* 浅色变体只覆写强调链路，背景/卡片保持默认密度，别把主题切换做成换肤事故。 */
+  [data-theme="ocean"]:not(.dark) {
+    --primary: 210 90% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 200 85% 50%;
+    --ring: 210 90% 45%;
+    --accent: 210 50% 95%;
+    --accent-foreground: 210 90% 35%;
+    --success: 210 90% 45%;
+    --success-foreground: 0 0% 100%;
+  }
+
+  [data-theme="sunset"]:not(.dark) {
+    --primary: 25 95% 48%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 35 90% 50%;
+    --ring: 25 95% 48%;
+    --accent: 25 50% 95%;
+    --accent-foreground: 25 95% 38%;
+    --success: 25 95% 48%;
+    --success-foreground: 0 0% 100%;
+  }
+
+  [data-theme="lavender"]:not(.dark) {
+    --primary: 270 70% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 280 65% 60%;
+    --ring: 270 70% 55%;
+    --accent: 270 50% 95%;
+    --accent-foreground: 270 70% 45%;
+    --success: 270 70% 55%;
+    --success-foreground: 0 0% 100%;
+  }
+
+  [data-theme="rose"]:not(.dark) {
+    --primary: 340 75% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 350 70% 55%;
+    --ring: 340 75% 50%;
+    --accent: 340 50% 95%;
+    --accent-foreground: 340 75% 40%;
+    --success: 340 75% 50%;
+    --success-foreground: 0 0% 100%;
+  }
+}

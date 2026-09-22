@@ -1,0 +1,34 @@
+{
+  "kind": "renewlet-cloudflare-upgrade-fixtures",
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-25T00:00:00.000Z",
+  "fixtures": [
+    {
+      "version": "v0.2.95",
+      "sourceCommit": "02fec668d65ad6b03ba0321301abf05e17ba28dd",
+      "migrationCount": 29,
+      "lastMigration": "0029_media_icon_index_refresh_jobs_index_hash.sql",
+      "migrationSourceSha256": "99e306d2bd476fe423f0a4ea34ae4764fd38af2818b66de0e014831c356847bd",
+      "fixture": "v0.2.95.sql",
+      "fixtureSha256": "16326f2a20b6fdd15b673324807da0b743f66559736e44a2988ea5e93a32ed51"
+    },
+    {
+      "version": "v0.2.96",
+      "sourceCommit": "d2755510203c8eaf7f8454aca22a36885c62a6cc",
+      "migrationCount": 32,
+      "lastMigration": "0032_exchange_rate_snapshots.sql",
+      "migrationSourceSha256": "a7ea0f1f331d94937dfff9a11395611cd2e1637cd20ed7fb4caec3f36f22227f",
+      "fixture": "v0.2.96.sql",
+      "fixtureSha256": "25b806634b9a2912cbe55a6777ce12633ca3c75f49e80f5cf5f2353990a3689d"
+    },
+    {
+      "version": "v0.3.21",
+      "sourceCommit": "dee5d8c8cf055583d9c45eb82a0b41e0cd13e016",
+      "migrationCount": 39,
+      "lastMigration": "0039_rebuild_subscription_collection_projections.sql",
+      "migrationSourceSha256": "b4142c54e90513b74a074aba0351584be20e2518e63a65a8d3e113d2edd3c2e3",
+      "fixture": "v0.3.21.sql",
+      "fixtureSha256": "52fe7d1032bcbd698f0059e2444178f87823344f825523746baa3e287c53fcc5"
+    }
+  ]
+}

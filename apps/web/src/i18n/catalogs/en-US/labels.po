@@ -1,0 +1,564 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:112
+msgid "date.monthDay"
+msgstr "{month}/{day}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:114
+msgid "date.short"
+msgstr "{year}/{month}/{day}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:113
+msgid "date.full"
+msgstr "{year}-{month}-{day}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:68
+msgid "payment.affirm"
+msgstr "Affirm"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:23
+msgid "category.aiTools"
+msgstr "AI Tools"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:63
+msgid "payment.amazonPay"
+msgstr "Amazon Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:55
+msgid "payment.applePay"
+msgstr "Apple Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:46
+msgid "channel.bark"
+msgstr "Bark"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:48
+msgid "channel.discord"
+msgstr "Discord"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:69
+msgid "payment.elo"
+msgstr "Elo"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:71
+msgid "payment.giropay"
+msgstr "GiroPay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:56
+msgid "payment.googlePay"
+msgstr "Google Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:72
+msgid "payment.ideal"
+msgstr "iDEAL"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:74
+msgid "payment.interac"
+msgstr "Interac"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:62
+msgid "payment.klarna"
+msgstr "Klarna"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:70
+msgid "payment.facebookPay"
+msgstr "Meta Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:41
+msgid "channel.notifyx"
+msgstr "Notifyx"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:54
+msgid "payment.paypal"
+msgstr "PayPal"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:75
+msgid "payment.paysafe"
+msgstr "Paysafe"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:76
+msgid "payment.poli"
+msgstr "POLi"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:49
+msgid "channel.pushplus"
+msgstr "PushPlus"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:77
+msgid "payment.qiwi"
+msgstr "QIWI"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:61
+msgid "payment.samsungPay"
+msgstr "Samsung Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:64
+msgid "payment.sepa"
+msgstr "SEPA"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:47
+msgid "channel.serverchan"
+msgstr "ServerChan"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:78
+msgid "payment.shopPay"
+msgstr "Shop Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:65
+msgid "payment.skrill"
+msgstr "Skrill"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:66
+msgid "payment.sofort"
+msgstr "Sofort"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:67
+msgid "payment.stripe"
+msgstr "Stripe"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:40
+msgid "channel.telegram"
+msgstr "Telegram"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:73
+msgid "payment.unionPay"
+msgstr "UnionPay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:79
+msgid "payment.venmo"
+msgstr "Venmo"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:80
+msgid "payment.verifone"
+msgstr "Verifone"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:42
+msgid "channel.webhook"
+msgstr "Webhook"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:81
+msgid "payment.webmoney"
+msgstr "WebMoney"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:39
+msgid "cycle.oneTime"
+msgstr "One-time purchase"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:13
+msgid "category.cloudStorage"
+msgstr "Cloud Storage"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:110
+msgid "wallos.category.cloudServices"
+msgstr "Cloud Services"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:105
+msgid "wallos.category.transport"
+msgstr "Transport"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:101
+msgid "repeat.windowFull"
+msgstr "After first reminder"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:44
+msgid "channel.wechat"
+msgstr "WeCom Bot"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:106
+msgid "wallos.category.insurance"
+msgstr "Insurance"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:52
+msgid "payment.creditCard"
+msgstr "Credit card"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:53
+msgid "payment.debitCard"
+msgstr "Debit card"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:15
+msgid "category.healthFitness"
+msgstr "Health & Fitness"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:103
+msgid "wallos.category.healthWellbeing"
+msgstr "Health & Wellbeing"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:12
+msgid "category.utilities"
+msgstr "Utilities"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:27
+msgid "category.other"
+msgstr "Other"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:82
+msgid "payment.other"
+msgstr "Other"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:98
+msgid "repeat.window24h"
+msgstr "Within 24 hours before renewal"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:99
+msgid "repeat.window48h"
+msgstr "Within 48 hours before renewal"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:100
+msgid "repeat.window72h"
+msgstr "Within 72 hours before renewal"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:58
+msgid "payment.crypto"
+msgstr "Crypto"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:19
+msgid "category.business"
+msgstr "Business"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:25
+msgid "category.hostingDomains"
+msgstr "Domains & Hosting"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:6
+msgid "category.entertainment"
+msgstr "Entertainment"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:24
+msgid "category.securityVpn"
+msgstr "Security & VPN"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:32
+msgid "status.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:31
+msgid "status.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:30
+msgid "status.expired"
+msgstr "Expired"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:21
+msgid "category.developerTools"
+msgstr "Developer Tools"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:9
+msgid "category.streaming"
+msgstr "Streaming"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:51
+msgid "payment.wechat"
+msgstr "WeChat Pay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:111
+msgid "wallos.category.charityDonations"
+msgstr "Charity & Donations"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:83
+msgid "reminder.days1"
+msgstr "1 day before"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:86
+msgid "reminder.days14"
+msgstr "14 days before"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:84
+msgid "reminder.days3"
+msgstr "3 days before"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:87
+msgid "reminder.days30"
+msgstr "30 days before"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:85
+msgid "reminder.days7"
+msgstr "7 days before"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:50
+msgid "payment.alipay"
+msgstr "Alipay"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:14
+msgid "category.education"
+msgstr "Education"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:107
+msgid "wallos.category.newsMagazines"
+msgstr "News & Magazines"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:26
+msgid "category.newsMedia"
+msgstr "News & Media"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:18
+msgid "category.travel"
+msgstr "Travel"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:88
+msgid "repeat.interval1h"
+msgstr "Every 1 hour"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:93
+msgid "repeat.sentenceInterval1h"
+msgstr "every 1 hour"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:91
+msgid "repeat.interval12h"
+msgstr "Every 12 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:96
+msgid "repeat.sentenceInterval12h"
+msgstr "every 12 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:92
+msgid "repeat.interval24h"
+msgstr "Every 24 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:97
+msgid "repeat.sentenceInterval24h"
+msgstr "every 24 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:89
+msgid "repeat.interval3h"
+msgstr "Every 3 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:94
+msgid "repeat.sentenceInterval3h"
+msgstr "every 3 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:90
+msgid "repeat.interval6h"
+msgstr "Every 6 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:95
+msgid "repeat.sentenceInterval6h"
+msgstr "every 6 hours"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:36
+msgid "cycle.semiAnnual"
+msgstr "Semiannual"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:33
+msgid "cycle.weekly"
+msgstr "Weekly"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:35
+msgid "cycle.quarterly"
+msgstr "Quarterly"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:37
+msgid "cycle.annual"
+msgstr "Annual"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:34
+msgid "cycle.monthly"
+msgstr "Monthly"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:29
+msgid "status.active"
+msgstr "Active"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:11
+msgid "category.gaming"
+msgstr "Gaming"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:60
+msgid "payment.money"
+msgstr "Money"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:8
+msgid "category.finance"
+msgstr "Finance"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:5
+msgid "category.productivity"
+msgstr "Productivity"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:7
+msgid "category.lifestyle"
+msgstr "Lifestyle"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:59
+msgid "payment.directDebit"
+msgstr "Direct debit"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:109
+msgid "wallos.category.technology"
+msgstr "Technology"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:38
+msgid "cycle.custom"
+msgstr "Custom"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:22
+msgid "category.design"
+msgstr "Design"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:28
+msgid "status.trial"
+msgstr "Trial"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:17
+msgid "category.shopping"
+msgstr "Shopping"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:108
+msgid "wallos.category.software"
+msgstr "Software"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:20
+msgid "category.communication"
+msgstr "Communication & Email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:45
+msgid "channel.email"
+msgstr "Email"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:43
+msgid "channel.dingtalk"
+msgstr "DingTalk"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:104
+msgid "wallos.category.banking"
+msgstr "Banking"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:57
+msgid "payment.bankTransfer"
+msgstr "Bank transfer"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:10
+msgid "category.music"
+msgstr "Music"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:16
+msgid "category.foodDining"
+msgstr "Food & Dining"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/labels.ts:102
+msgid "wallos.category.foodBeverages"
+msgstr "Food & Beverages"

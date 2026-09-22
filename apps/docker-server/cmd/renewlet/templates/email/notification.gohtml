@@ -1,0 +1,209 @@
+{{/* 邮件品牌标识用 table/inline style 复刻真实图形，不走 SVG/IMG/CID，避免客户端拦截和远程请求泄露。 */}}
+{{define "emailBrandMark"}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="{{.Size}}" height="{{.Size}}" class="{{.ClassName}}" bgcolor="{{.Background}}" style="width:{{.Size}}px; height:{{.Size}}px; border-collapse:separate; border-spacing:0; background:{{.Background}}; border:1px solid {{.Border}}; border-radius:{{.Radius}}px;">
+  <tr>
+    <td align="center" valign="middle" style="padding:0; vertical-align:middle;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          <td bgcolor="{{.Foreground}}" style="width:{{.TopWidth}}px; height:{{.TopHeight}}px; border-radius:{{.TopRadius}}px; background:{{.Foreground}}; font-size:0; line-height:0;">&nbsp;</td>
+          <td style="width:{{.Gap}}px; font-size:0; line-height:0;">&nbsp;</td>
+          <td bgcolor="{{.Accent}}" style="width:{{.DotSize}}px; height:{{.DotSize}}px; border-radius:{{.DotRadius}}px; background:{{.Accent}}; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="height:{{.RowGap}}px; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="padding-left:{{.BottomInset}}px;">
+            <div style="width:{{.BottomWidth}}px; height:{{.BottomHeight}}px; border-radius:{{.BottomRadius}}px; background:{{.Accent}}; font-size:0; line-height:0;">&nbsp;</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+{{end}}
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light">
+  <title>{{.Title}}</title>
+  <style>
+    :root { color-scheme: light only; supported-color-schemes: light; }
+    body, table, td, p, a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+    table, td { mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    body { margin:0 !important; padding:0 !important; width:100% !important; background:{{.Theme.Background}}; }
+    @media screen and (max-width: 620px) {
+      .email-container { width:100% !important; max-width:100% !important; }
+      .email-outer-pad { padding:28px 0 !important; }
+      .email-main-card { border-left:0 !important; border-right:0 !important; border-radius:0 !important; }
+      .email-px { padding-left:24px !important; padding-right:24px !important; }
+      .email-h1 { font-size:20px !important; line-height:28px !important; }
+      .email-metric { font-size:34px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background:{{.Theme.Background}}; font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Inter,'Segoe UI',Roboto,sans-serif;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; opacity:0; color:transparent; height:0; width:0; font-size:1px; line-height:1px;">{{.Preheader}}</div>
+  {{/* 邮件布局继续使用 table，是为了兼容 Outlook/老客户端，不要替换成 flex/grid。 */}}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; background:{{.Theme.Background}};">
+    <tr>
+      <td align="center" class="email-outer-pad" style="padding:40px 16px;">
+        <table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; border-collapse:separate; border-spacing:0;">
+          <tr>
+            <td class="email-px" style="padding:0 8px 24px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td align="left" valign="middle" style="vertical-align:middle;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="email-brand-lockup" style="border-collapse:collapse;">
+                      <tr>
+                        <td align="center" valign="middle" style="vertical-align:middle;">{{template "emailBrandMark" .Brand.HeaderMark}}</td>
+                        <td valign="middle" style="padding-left:10px; color:{{.Theme.Text}}; font-size:14px; font-weight:700; line-height:20px;">{{.Brand.Name}}</td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" valign="middle" style="vertical-align:middle;">
+                    <span style="display:inline-block; padding:4px 10px; border-radius:6px; background:{{.Theme.PrimarySoft}}; color:{{.Theme.Primary}}; font-size:11px; font-weight:700; line-height:16px;">{{.StatusLabel}}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="email-main-card" style="background:{{.Theme.Surface}}; border:1px solid {{.Theme.Border}}; border-radius:20px; overflow:hidden;{{if .ShowCardBottomPadding}} padding-bottom:36px;{{end}}">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td class="email-px" style="padding:36px 36px 0 36px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-summary-panel" style="width:100%; border-collapse:separate; border-spacing:0; background:{{.Theme.SurfaceMuted}}; border:1px solid {{.Theme.Border}}; border-radius:12px;">
+                      <tr>
+                        <td style="padding:16px 16px 13px 16px;">
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                            <tr>
+                              <td valign="top" style="vertical-align:top;">
+                                <div style="color:{{.Theme.Primary}}; font-size:12px; font-weight:700; line-height:18px; text-transform:uppercase;">{{.Summary.Eyebrow}}</div>
+                                <div class="email-metric" style="margin-top:2px; color:{{.Theme.Primary}}; font-size:34px; font-weight:800; line-height:38px;">{{.Summary.Value}} <span style="color:{{.Theme.Muted}}; font-size:16px; font-weight:700; line-height:20px;">{{.Summary.Label}}</span></div>
+                              </td>
+                            </tr>
+                          </table>
+                          <div style="margin-top:10px; color:{{.Theme.Muted}}; font-size:13px; line-height:20px;">{{.Summary.Detail}}</div>
+                          {{if .Summary.Rows}}
+                          <div style="margin-top:12px; padding-top:10px; border-top:1px solid {{.Theme.Border}}; color:{{.Theme.Muted}}; font-size:12px; line-height:18px;">{{range $index, $row := .Summary.Rows}}{{if $index}}<span style="color:{{$.Theme.Border}}; padding:0 7px;">/</span>{{end}}{{$row.Label}} <strong style="color:{{$.Theme.Primary}}; font-weight:800;">{{$row.Value}}</strong>{{end}}</div>
+                          {{end}}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              {{if and (ne .LayoutMode "test-status") (ne .LayoutMode "reminder-list")}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td class="email-px" style="padding:24px 36px 0 36px;">
+                    <h1 class="email-h1" style="margin:0; color:{{.Theme.Text}}; font-size:22px; line-height:30px; font-weight:700;">{{.Title}}</h1>
+                  </td>
+                </tr>
+              </table>
+              {{end}}
+
+              {{if eq .LayoutMode "reminder-list"}}
+              {{range $groupIndex, $group := .Groups}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td class="email-px" style="padding:{{if $groupIndex}}8px{{else}}12px{{end}} 36px 0 36px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-group-card" style="width:100%; border-collapse:separate; border-spacing:0; background:{{$.Theme.SurfaceMuted}}; border:1px solid {{$.Theme.Border}}; border-radius:12px;">
+                      <tr>
+                        <td style="padding:12px 16px 5px 16px;">
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                            <tr>
+                              <td align="left" style="color:{{$.Theme.Text}}; font-size:13px; font-weight:800; line-height:18px;">{{$group.Label}}</td>
+                              <td align="right" style="color:{{$.Theme.Muted}}; font-size:12px; font-weight:700; line-height:18px;">{{$group.Count}}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      {{range $itemIndex, $item := $group.Items}}
+                      <tr>
+                        <td style="padding:0 16px;">
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; {{if $itemIndex}}border-top:1px solid {{$.Theme.Border}};{{end}}">
+                            <tr>
+                              <td valign="top" style="padding:8px 0 7px 0; vertical-align:top;">
+                                <p style="margin:0; color:{{$.Theme.Text}}; font-size:14px; font-weight:700; line-height:19px;">{{$item.Name}}</p>
+                                <p style="margin:2px 0 0 0; color:{{$.Theme.Muted}}; font-size:12px; line-height:17px;">{{$item.DateLabel}} · {{$item.TargetDate}} · {{$item.Detail}}</p>
+                              </td>
+                              <td align="right" valign="top" width="96" style="width:96px; padding:8px 0 7px 12px; vertical-align:top; text-align:right; white-space:nowrap;">
+                                <p style="margin:0; color:{{$.Theme.Text}}; font-size:15px; font-weight:800; line-height:19px;">{{$item.Amount}}</p>
+                                <p style="margin:1px 0 0 0; color:{{$.Theme.Muted}}; font-size:10px; font-weight:700; line-height:14px;">{{$item.Currency}}</p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      {{end}}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {{end}}
+              {{else if .MessagePanel}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td class="email-px" style="padding:0 36px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-message-panel" style="width:100%; border-collapse:separate; border-spacing:0; background:{{.Theme.SurfaceMuted}}; border:1px solid {{.Theme.Border}}; border-radius:14px;">
+                      <tr>
+                        <td style="padding:18px 20px;">
+                          <p style="margin:0 0 6px 0; color:{{.Theme.Text}}; font-size:13px; font-weight:800; line-height:20px;">{{.MessagePanel.Label}}</p>
+                          <p style="margin:0; color:{{.Theme.Muted}}; font-size:14px; line-height:22px;">{{range $index, $line := .MessagePanel.Lines}}{{if $index}}<br>{{end}}{{$line}}{{end}}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {{end}}
+
+              {{if .ShowCTA}}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td class="email-px" align="center" style="padding:28px 36px 36px 36px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:separate; border-spacing:0;">
+                      <tr>
+                        <td align="center" valign="middle" bgcolor="{{.Theme.Text}}" style="background:{{.Theme.Text}}; border-radius:12px;">
+                          <a href="{{.CTAURL}}" style="display:block; color:#FFFFFF; font-size:15px; font-weight:700; line-height:48px; text-decoration:none;">{{.CTALabel}}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {{end}}
+            </td>
+          </tr>
+
+          <tr>
+            <td class="email-px" style="padding:28px 8px 8px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+                <tr>
+                  <td align="center" style="color:#94A3B8; font-size:12px; line-height:20px;">
+                    <strong style="color:{{.Theme.Muted}}; font-weight:700;">{{.Copy.GeneratedAt}}</strong> {{.Timestamp}}
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top:8px; color:#94A3B8; font-size:12px; line-height:20px;">{{.Copy.Footer}}</td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top:18px; color:#94A3B8; font-size:11px; line-height:16px;">© Renewlet</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

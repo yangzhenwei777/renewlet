@@ -1,0 +1,222 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/pocketbase/pocketbase/core"
+)
+
+func TestSubscriptionRenewRouteAdvancesManualSubscription(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, token := createRouteTestUser(t, app, "renew")
+	today := todayDateOnly(time.Now().UTC(), "UTC")
+	originalStartDate := addDateOnly(today, -42)
+	originalNextBillingDate := addDateOnly(today, -14)
+	expectedNextBillingDate := addDateOnly(today, 7)
+	record := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":                         "Manual Renew",
+		"status":                       "expired",
+		"billingCycle":                 "weekly",
+		"startDate":                    originalStartDate,
+		"nextBillingDate":              originalNextBillingDate,
+		"autoRenew":                    false,
+		"autoCalculateNextBillingDate": false,
+	})
+
+	requestBody, err := json.Marshal(map[string]interface{}{
+		"mode":                         "continue",
+		"price":                        "15.500000",
+		"currency":                     "EUR",
+		"startDate":                    nil,
+		"nextBillingDate":              expectedNextBillingDate,
+		"autoCalculateNextBillingDate": false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+record.Id+"/renew", string(requestBody), token)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected renew 200, got %d: %s", res.Code, res.Body.String())
+	}
+	body := decodeAPISuccessDataForTest[map[string]map[string]interface{}](t, res.Body.Bytes())
+	subscription := body["subscription"]
+	if subscription["status"] != "active" {
+		t.Fatalf("expected expired manual subscription to become active, got %#v", subscription["status"])
+	}
+	if subscription["nextBillingDate"] != expectedNextBillingDate {
+		t.Fatalf("expected continue renewal to advance original anchor, got %#v", subscription)
+	}
+	if subscription["price"] != "15.5" || subscription["currency"] != "EUR" {
+		t.Fatalf("expected continue renewal to update price/currency, got %#v", subscription)
+	}
+	if subscription["autoRenew"] != false {
+		t.Fatalf("expected manual renewal to keep autoRenew=false, got %#v", subscription["autoRenew"])
+	}
+	if _, ok := subscription["user"]; ok {
+		t.Fatalf("renew response must not expose owner field: %#v", subscription)
+	}
+	reloaded, err := app.FindRecordById("subscriptions", record.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.GetString("status") != "active" || reloaded.GetString("nextBillingDate") != expectedNextBillingDate || reloaded.GetString("price") != "15.5" || reloaded.GetString("currency") != "EUR" {
+		t.Fatalf("expected record to be renewed, status=%s next=%s", reloaded.GetString("status"), reloaded.GetString("nextBillingDate"))
+	}
+}
+
+func TestSubscriptionRenewRouteRestartsManualSubscription(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, token := createRouteTestUser(t, app, "renew-restart")
+	record := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":                         "Restart Renew",
+		"status":                       "expired",
+		"startDate":                    "2026-01-01",
+		"nextBillingDate":              "2026-02-01",
+		"autoRenew":                    false,
+		"autoCalculateNextBillingDate": false,
+	})
+
+	res := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+record.Id+"/renew", `{
+		"mode":"restart",
+		"price":"20",
+		"currency":"USD",
+		"startDate":"2026-08-12",
+		"nextBillingDate":"2026-09-12",
+		"autoCalculateNextBillingDate":true
+	}`, token)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected renew restart 200, got %d: %s", res.Code, res.Body.String())
+	}
+	body := decodeAPISuccessDataForTest[map[string]map[string]interface{}](t, res.Body.Bytes())
+	subscription := body["subscription"]
+	if subscription["status"] != "active" || subscription["startDate"] != "2026-08-12" || subscription["nextBillingDate"] != "2026-09-12" {
+		t.Fatalf("expected restart renewal to save new dates and active status, got %#v", subscription)
+	}
+	if subscription["autoCalculateNextBillingDate"] != true {
+		t.Fatalf("expected restart renewal to persist autoCalculateNextBillingDate=true, got %#v", subscription)
+	}
+	reloaded, err := app.FindRecordById("subscriptions", record.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.GetString("startDate") != "2026-08-12" || reloaded.GetString("nextBillingDate") != "2026-09-12" || !reloaded.GetBool("autoCalculateNextBillingDate") {
+		t.Fatalf("expected restarted record dates to persist, start=%s next=%s auto=%v", reloaded.GetString("startDate"), reloaded.GetString("nextBillingDate"), reloaded.GetBool("autoCalculateNextBillingDate"))
+	}
+}
+
+func TestSubscriptionRenewRouteRejectsDisallowedSubscriptions(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, token := createRouteTestUser(t, app, "renew-reject")
+	otherUser, _ := createRouteTestUser(t, app, "renew-other")
+
+	paused := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":      "Paused Manual",
+		"status":    "paused",
+		"autoRenew": false,
+	})
+	automatic := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":      "Automatic",
+		"autoRenew": true,
+	})
+	oneTime := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":         "One Time",
+		"billingCycle": "one-time",
+		"autoRenew":    false,
+	})
+	foreign := createRouteTestSubscription(t, app, otherUser.Id, map[string]interface{}{
+		"name":      "Foreign",
+		"autoRenew": false,
+	})
+	body := `{"mode":"continue","price":"12","currency":"USD","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`
+
+	for _, record := range []*core.Record{paused, automatic, oneTime} {
+		res := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+record.Id+"/renew", body, token)
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("expected disallowed subscription %s to return 400, got %d: %s", record.GetString("name"), res.Code, res.Body.String())
+		}
+	}
+	foreignRes := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+foreign.Id+"/renew", body, token)
+	if foreignRes.Code != http.StatusNotFound {
+		t.Fatalf("expected foreign subscription to return 404, got %d: %s", foreignRes.Code, foreignRes.Body.String())
+	}
+}
+
+func TestSubscriptionRenewRouteRejectsInvalidBody(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, token := createRouteTestUser(t, app, "renew-invalid")
+	record := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":      "Invalid Body Renew",
+		"autoRenew": false,
+	})
+
+	cases := []string{
+		``,
+		`{}`,
+		`{"mode":"continue","price":"12","currency":"USD","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false,"extra":true}`,
+		`{"mode":"restart","price":"12","currency":"USD","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`,
+		`{"mode":"restart","price":"12","currency":"USD","startDate":"2026-04-01","nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`,
+		`{"mode":"continue","price":"1e3","currency":"USD","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`,
+		`{"mode":"continue","price":"12","currency":"US","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`,
+		`{"mode":"continue","price":"12","currency":"usd","startDate":null,"nextBillingDate":"2026-03-01","autoCalculateNextBillingDate":false}`,
+	}
+
+	for _, body := range cases {
+		res := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+record.Id+"/renew", body, token)
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("expected invalid renew body to return 400, got %d for %q: %s", res.Code, body, res.Body.String())
+		}
+	}
+}
+
+func TestSubscriptionRenewRouteRejectsRestartOutsideCostSharingMemberRange(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, token := createRouteTestUser(t, app, "renew-cost-sharing")
+	record := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"name":            "Cost Sharing Restart",
+		"status":          "expired",
+		"startDate":       "2026-01-01",
+		"nextBillingDate": "2026-04-01",
+		"autoRenew":       false,
+		"costSharing": json.RawMessage(`{
+			"enabled": true,
+			"splitMode": "equal",
+			"collectionReminder": {"enabled": true, "reminderDays": -1},
+			"members": [{"id": "member-1", "name": "Member", "joinedDate": "2026-03-01"}]
+		}`),
+	})
+
+	res := serveTestRequest(t, app, http.MethodPost, "/api/app/subscriptions/"+record.Id+"/renew", `{
+		"mode":"restart",
+		"price":"20",
+		"currency":"USD",
+		"startDate":"2026-08-12",
+		"nextBillingDate":"2026-09-12",
+		"autoCalculateNextBillingDate":true
+	}`, token)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected restart outside cost-sharing member range to return 400, got %d: %s", res.Code, res.Body.String())
+	}
+}

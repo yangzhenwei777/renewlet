@@ -1,0 +1,184 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: zh-CN\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:27
+msgid "legal.terms.scope.title"
+msgstr "1. 使用范围"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:8
+msgid "legal.privacy.data.title"
+msgstr "1. 我们会处理哪些数据"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:12
+msgid "legal.privacy.usage.title"
+msgstr "2. 数据如何被使用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:30
+msgid "legal.terms.account.title"
+msgstr "2. 账号与数据"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:33
+msgid "legal.terms.thirdParty.title"
+msgstr "3. 第三方服务"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:15
+msgid "legal.privacy.thirdParty.title"
+msgstr "3. 第三方请求"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:21
+msgid "legal.privacy.control.title"
+msgstr "4. 你的控制权"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:36
+msgid "legal.terms.disclaimer.title"
+msgstr "4. 免责声明"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:19
+msgid "legal.privacy.thirdParty.ai"
+msgstr "AI 识别：当你主动使用 AI 识别添加订阅时，粘贴的文字、上传的图片和已有标签名会发送到你在设置页配置的第三方 AI 平台。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:7
+msgid "legal.privacy.intro"
+msgstr "Renewlet 默认不注入自定义 head HTML。实例运营者可以启用拥有页面同源代码权限的可信片段；你使用某个部署实例时，该片段及其全部数据处理由实例运营者（可能是你自己）负责。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:26
+msgid "legal.terms.intro"
+msgstr "Renewlet（renewlet）是一个开源的订阅管理工具。本页面用于说明你在使用本项目或其部署实例时需要了解的基本规则。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:10
+msgid "legal.privacy.data.business"
+msgstr "业务数据：订阅信息、分类/支付方式/货币配置、用户设置等（SQLite）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:28
+msgid "legal.terms.scope.lawful"
+msgstr "你可以在合法合规的前提下使用本项目（含自托管部署）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:22
+msgid "legal.privacy.control.settings"
+msgstr "你可以在设置页随时修改通知渠道配置，或关闭通知。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:29
+msgid "legal.terms.scope.accuracy"
+msgstr "你需要自行确保录入的订阅/价格/汇率等数据准确性，本项目仅提供管理与展示能力。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:25
+msgid "legal.terms.subtitle"
+msgstr "最后更新：2026-01-12"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:6
+msgid "legal.privacy.subtitle"
+msgstr "最后更新：2026-08-24"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:38
+msgid "legal.terms.disclaimer.loss"
+msgstr "因使用本项目或其部署实例导致的任何损失，你应自行承担相应责任。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:17
+msgid "legal.privacy.thirdParty.icons"
+msgstr "图标搜索：手动搜索 Logo 时，服务名称可能会按你选择的 App Store 地区通过 Renewlet 后端发送到 Apple Search API，默认只查 US；浏览器可能加载 Apple CDN 图标，也可能加载外部 favicon/logo 备用候选。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:32
+msgid "legal.terms.account.operator"
+msgstr "如果你使用的是他人提供的部署实例，请了解该实例运营者可能拥有服务器与数据库层面的运维权限。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:23
+msgid "legal.privacy.control.selfHost"
+msgstr "如果你是自托管部署者，你可以通过 PocketBase 后台和 `/pb_data` 管理、备份或删除数据。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:24
+msgid "legal.terms.title"
+msgstr "服务条款"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:37
+msgid "legal.terms.disclaimer.asIs"
+msgstr "本项目按“现状”提供，不对任何结果作保证（包括但不限于准确性、及时性、适用性）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:31
+msgid "legal.terms.account.localAuth"
+msgstr "本项目默认使用本地认证进行登录鉴权；数据存储在 SQLite 和本地上传目录。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:16
+msgid "legal.privacy.thirdParty.rates"
+msgstr "汇率：可使用 Frankfurter、Exchange API 或 FloatRates JSON Feeds 获取汇率数据（远端失败或少量缺币时会尝试其他来源补齐，最终回退到内置汇率，保证可用）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:13
+msgid "legal.privacy.usage.core"
+msgstr "用于提供核心功能：订阅管理、统计、日历展示、个性化设置。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:14
+msgid "legal.privacy.usage.notifications"
+msgstr "用于通知功能（可选）：当你启用通知渠道后，系统会把通知内容发送到你配置的第三方渠道。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:35
+msgid "legal.terms.thirdParty.responsibility"
+msgstr "第三方服务的可用性、限流策略与数据准确性由其自身负责。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:9
+msgid "legal.privacy.data.account"
+msgstr "账号信息：由 PocketBase 认证管理（例如邮箱、HttpOnly 浏览器会话 Cookie）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:11
+msgid "legal.privacy.data.files"
+msgstr "资源文件：你上传的 Logo/Icon 等图片（本地文件存储）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:18
+msgid "legal.privacy.thirdParty.notifications"
+msgstr "通知：Telegram/企业微信/Webhook/SMTP 邮件/Bark/Server酱 等渠道会接收你配置的通知内容。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:34
+msgid "legal.terms.thirdParty.features"
+msgstr "部分功能会请求第三方服务（例如汇率 API、通知渠道服务、图标搜索站点等）。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:20
+msgid "legal.privacy.thirdParty.customScript"
+msgstr "部署者自定义 head：统计、会话录屏或其他第三方脚本可能收集并发送页面与交互数据。实例运营者负责数据披露、隐私政策和法律要求的 consent signal；Renewlet 不内置 Clarity 专用逻辑或 CMP。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/legal.ts:5
+msgid "legal.privacy.title"
+msgstr "隐私政策"

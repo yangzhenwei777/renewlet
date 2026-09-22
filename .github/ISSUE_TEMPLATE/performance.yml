@@ -1,0 +1,36 @@
+name: Performance report
+description: Report repeatable latency, memory, D1 operation, or bundle regressions.
+title: "[Performance]: "
+labels: ["performance"]
+body:
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Affected runtime
+      options:
+        - Docker / Go / SQLite
+        - Cloudflare Worker / D1 / R2
+        - Web client
+        - Multiple runtimes
+    validations:
+      required: true
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload
+      description: Include the operation, 10/100/1000-style dataset size, tag count, asset sizes, and whether the result is cold or warm.
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Include repeat counts and available SQL/D1 operations, RSS or isolate memory, duration, and gzip/brotli output. Do not include business content.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction command or steps
+    validations:
+      required: true

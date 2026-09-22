@@ -1,0 +1,30 @@
+/** 生成最小合法 AI 草稿；测试只覆盖 Worker 归一化边界，避免重复手写 shared schema 全字段。 */
+export function generatedDraft(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: "dmit",
+    price: 15,
+    currency: "CNY",
+    billingCycle: "monthly",
+    customDays: null,
+    customCycleUnit: null,
+    oneTimeTermCount: null,
+    oneTimeTermUnit: null,
+    category: null,
+    status: "active",
+    paymentMethod: null,
+    startDate: null,
+    nextBillingDate: null,
+    autoCalculateNextBillingDate: true,
+    trialEndDate: null,
+    website: null,
+    notes: { value: "DMIT 是提供 VPS 和云服务器相关产品或服务的订阅服务。", source: "suggested" },
+    tags: [],
+    reminderDays: null,
+    repeatReminderEnabled: null,
+    repeatReminderInterval: null,
+    repeatReminderWindow: null,
+    confidence: "high",
+    warnings: [],
+    ...overrides,
+  };
+}

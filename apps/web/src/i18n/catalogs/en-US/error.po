@@ -1,0 +1,504 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-25 00:00+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:98
+msgid "error.code.AI_RECOGNITION_EMPTY"
+msgstr "AI did not recognize any subscriptions that can be imported."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:99
+msgid "error.code.AI_RECOGNITION_FAILED"
+msgstr "AI recognition failed. Check the input and model configuration."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:100
+msgid "error.code.AI_RECOGNITION_SCHEMA_MISMATCH"
+msgstr "The AI response could not be turned into subscription drafts. Try a stronger model or add clearer details."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:101
+msgid "error.code.AI_RECOGNITION_TEST_FAILED"
+msgstr "AI connection test failed. Check the model configuration."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:39
+msgid "error.code.LOGO_URL_USERINFO_INVALID"
+msgstr "Logo URL cannot include a username or password."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:37
+msgid "error.code.LOGO_URL_TOO_LONG"
+msgstr "Logo URL cannot exceed 2048 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:38
+msgid "error.code.LOGO_URL_SCHEME_INVALID"
+msgstr "Logo URL must use http:// or https://."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:36
+msgid "error.code.LOGO_URL_INVALID"
+msgstr "Logo URL is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:20
+msgid "error.code.TURNSTILE_TEST_FAILED"
+msgstr "Turnstile configuration test failed. Check the site key and secret key."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:63
+msgid "error.code.ASSET_FILE_TOO_MANY"
+msgstr "Only one image can be uploaded at a time."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:31
+msgid "error.code.NEXT_BILLING_DATE_DATE_FORMAT"
+msgstr "Next billing date must be YYYY-MM-DD."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:32
+msgid "error.code.NEXT_BILLING_DATE_DATE_INVALID"
+msgstr "Next billing date is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:17
+msgid "error.turnstileFailed"
+msgstr "Human verification failed. Verify again before signing in."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:65
+msgid "error.code.ASSET_FILE_TYPE_INVALID"
+msgstr "Only PNG, JPG, WebP, SVG, or ICO images are supported."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:83
+msgid "error.code.IMPORT_CONFLICT_MODE_INVALID"
+msgstr "Invalid conflict mode."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:33
+msgid "error.code.NEXT_BILLING_DATE_BEFORE_START_DATE"
+msgstr "Renewal date cannot be before the start date."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:44
+msgid "error.code.TAG_TOO_LONG"
+msgstr "A single tag cannot exceed 40 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:91
+msgid "error.code.IMPORT_SOURCE_ID_DUPLICATE"
+msgstr "The same import file contains duplicate source IDs."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:64
+msgid "error.code.ASSET_FILE_SIZE_INVALID"
+msgstr "Image size must be between 1 byte and 2MB."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:62
+msgid "error.code.ASSET_KIND_INVALID"
+msgstr "Image purpose is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:97
+msgid "error.code.AI_IMAGE_TYPE_INVALID"
+msgstr "Invalid image type. Only PNG, JPG, or WebP is supported."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:41
+msgid "error.code.WEBSITE_URL_SCHEME_INVALID"
+msgstr "Website URL must use http:// or https://."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:40
+msgid "error.code.WEBSITE_URL_INVALID"
+msgstr "Website URL is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:76
+msgid "error.code.USER_PASSWORD_INVALID"
+msgstr "Password length is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:81
+msgid "error.code.IMPORT_PREVIEW_FAILED"
+msgstr "Import payload contains errors. Fix the preview errors first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:89
+msgid "error.code.IMPORT_CONFIDENCE_INVALID"
+msgstr "Import matching information is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:88
+msgid "error.code.IMPORT_SOURCE_ID_INVALID"
+msgstr "Import source ID is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:87
+msgid "error.code.IMPORT_KEY_REQUIRED"
+msgstr "Import source matching information is missing."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:84
+msgid "error.code.IMPORT_SOURCE_INVALID"
+msgstr "Invalid import source."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:85
+msgid "error.code.IMPORT_TOO_MANY_SUBSCRIPTIONS"
+msgstr "Too many subscriptions to import."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:14
+msgid "error.tooManyAttempts"
+msgstr "Too many attempts. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:29
+msgid "error.code.START_DATE_DATE_FORMAT"
+msgstr "Start date must be YYYY-MM-DD."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:30
+msgid "error.code.START_DATE_DATE_INVALID"
+msgstr "Start date is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:96
+msgid "error.code.AI_THINKING_PROVIDER_MISMATCH"
+msgstr "Thinking control does not match the selected platform or protocol."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:47
+msgid "error.code.COST_SHARING_MEMBER_JOINED_DATE_OUT_OF_RANGE"
+msgstr "Member joined dates must stay within the subscription date range."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:45
+msgid "error.code.REMINDER_DAYS_OUT_OF_RANGE"
+msgstr "Reminder days must be Do not remind, Default from Settings, or between 0 and 3650."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:5
+msgid "error.generic"
+msgstr "Something went wrong. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:66
+msgid "error.code.ASSET_FILE_READ_FAILED"
+msgstr "Could not read the uploaded file."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:11
+msgid "error.invalidResponse"
+msgstr "Invalid server response"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:43
+msgid "error.code.TAGS_TOO_MANY"
+msgstr "Tags support at most 100 items."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:42
+msgid "error.code.TAGS_MUST_BE_STRING_ARRAY"
+msgstr "Tags must be an array of strings."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:8
+msgid "error.exchangeRatesContract"
+msgstr "Exchange-rate response format is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:74
+msgid "error.code.USER_NAME_TOO_LONG"
+msgstr "User name cannot exceed 80 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:15
+msgid "error.loginUnavailable"
+msgstr "Login service is temporarily unavailable. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:102
+msgid "error.code.SUBSCRIPTION_COLLECTION_LIMIT_EXCEEDED"
+msgstr "The result exceeds the processing limit. Narrow the search or filters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:6
+msgid "error.network"
+msgstr "Network request failed"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:28
+msgid "error.code.CUSTOM_CYCLE_UNIT_INVALID"
+msgstr "Custom cycle unit is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:27
+msgid "error.code.CUSTOM_DAYS_NEGATIVE"
+msgstr "Custom cycle quantity cannot be negative."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:26
+msgid "error.code.CUSTOM_DAYS_REQUIRED"
+msgstr "Custom cycle quantity must be greater than 0."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:52
+msgid "error.code.CUSTOM_CONFIG_GROUP_TOO_LARGE"
+msgstr "Custom configuration group supports at most 200 items."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:51
+msgid "error.code.CUSTOM_CONFIG_GROUP_NOT_ARRAY"
+msgstr "Custom configuration group must be an array."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:50
+msgid "error.code.CUSTOM_CONFIG_JSON_INVALID"
+msgstr "Custom configuration data is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:53
+msgid "error.code.CUSTOM_CONFIG_ITEM_INVALID"
+msgstr "Custom configuration item is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:24
+msgid "error.code.SUBSCRIPTION_PRICE_NEGATIVE"
+msgstr "Subscription price cannot be negative."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:25
+msgid "error.code.SUBSCRIPTION_PRICE_TOO_HIGH"
+msgstr "Subscription price cannot exceed 1,000,000,000."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:22
+msgid "error.code.SUBSCRIPTION_NAME_TOO_LONG"
+msgstr "Subscription name cannot exceed 120 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:90
+msgid "error.code.IMPORT_SOURCE_MISMATCH"
+msgstr "Subscription import source does not match the payload."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:86
+msgid "error.code.IMPORT_SETTINGS_INVALID"
+msgstr "Invalid settings import payload."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:49
+msgid "error.code.SETTINGS_JSON_INVALID"
+msgstr "Settings data is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:34
+msgid "error.code.TRIAL_END_DATE_DATE_FORMAT"
+msgstr "Trial end date must be YYYY-MM-DD."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:35
+msgid "error.code.TRIAL_END_DATE_DATE_INVALID"
+msgstr "Trial end date is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:46
+msgid "error.code.COST_SHARING_COLLECTION_ANCHOR_REQUIRED"
+msgstr "Set member joined dates, or fill in the subscription start date first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:94
+msgid "error.code.AI_API_KEY_REQUIRED"
+msgstr "Fill in the AI API Key first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:93
+msgid "error.code.AI_BASE_URL_REQUIRED"
+msgstr "Fill in the AI Base URL first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:92
+msgid "error.code.AI_MODEL_REQUIRED"
+msgstr "Fill in the AI model first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:16
+msgid "error.turnstileRequired"
+msgstr "Complete human verification first"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:95
+msgid "error.code.AI_RECOGNITION_INPUT_REQUIRED"
+msgstr "Paste text or upload images first."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:18
+msgid "error.code.TURNSTILE_CONFIG_INCOMPLETE"
+msgstr "Enter both the Site key and Secret key."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:19
+msgid "error.code.TURNSTILE_REQUIRED"
+msgstr "Complete human verification."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:77
+msgid "error.code.INVALID_JSON"
+msgstr "Request body is not valid JSON."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:78
+msgid "error.code.EMPTY_BODY"
+msgstr "Request body cannot be empty."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:79
+msgid "error.code.BODY_TOO_LARGE"
+msgstr "Request body is too large."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:10
+msgid "error.invalidParams"
+msgstr "Invalid request parameters"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:80
+msgid "error.code.INVALID_PAYLOAD"
+msgstr "Invalid request parameters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:9
+msgid "error.aborted"
+msgstr "Request cancelled"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:7
+msgid "error.timeout"
+msgstr "Request timed out. Please try again later."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:61
+msgid "error.code.BUILT_IN_ICON_SOURCE_REQUIRED"
+msgstr "Enable at least one built-in icon source."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:73
+msgid "error.code.USER_NAME_REQUIRED"
+msgstr "Enter a user name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:21
+msgid "error.code.SUBSCRIPTION_NAME_REQUIRED"
+msgstr "Enter a subscription name"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:23
+msgid "error.code.CURRENCY_CODE_INVALID"
+msgstr "Currency code must be 3 uppercase letters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:82
+msgid "error.code.IMPORT_SKIP_INDEX_INVALID"
+msgstr "Invalid skipped item index."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:12
+msgid "error.moreErrors"
+msgstr "{count} more errors"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:71
+msgid "error.code.NOTIFICATION_UTC_TIME_INVALID"
+msgstr "Notification UTC time is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:72
+msgid "error.code.NOTIFICATION_ATTEMPTS_NEGATIVE"
+msgstr "Notification attempts cannot be negative."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:70
+msgid "error.code.NOTIFICATION_TIMEZONE_INVALID"
+msgstr "Notification time zone is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:67
+msgid "error.code.NOTIFICATION_LOCAL_DATE_DATE_FORMAT"
+msgstr "Notification local date must be YYYY-MM-DD."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:68
+msgid "error.code.NOTIFICATION_LOCAL_DATE_DATE_INVALID"
+msgstr "Notification local date is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:69
+msgid "error.code.NOTIFICATION_LOCAL_TIME_INVALID"
+msgstr "Notification local time is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:13
+msgid "error.loginGeneric"
+msgstr "Email or password is incorrect. Please check and try again."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:75
+msgid "error.code.USER_EMAIL_INVALID"
+msgstr "Email format is invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:55
+msgid "error.code.CONFIG_ITEM_LABELS_INVALID"
+msgstr "Configuration item labels are invalid."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:60
+msgid "error.code.CONFIG_ITEM_ENABLED_NOT_BOOLEAN"
+msgstr "Configuration item enabled state must be a boolean."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:59
+msgid "error.code.CONFIG_ITEM_ICON_NOT_STRING"
+msgstr "Configuration item icon must be a string."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:57
+msgid "error.code.CONFIG_ITEM_FIELDS_TOO_LONG"
+msgstr "Configuration item fields cannot exceed 128 characters."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:54
+msgid "error.code.CONFIG_ITEM_LABELS_REQUIRED"
+msgstr "Configuration items must include both Chinese and English names."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:56
+msgid "error.code.CONFIG_ITEM_REQUIRED_FIELDS"
+msgstr "Configuration item value, Chinese name, and English name are required."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:58
+msgid "error.code.CONFIG_ITEM_COLOR_NOT_STRING"
+msgstr "Configuration item color must be a string."
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/error.ts:48
+msgid "error.code.COST_SHARING_COLLECTION_REMINDER_ONE_TIME_BUYOUT_INVALID"
+msgstr "Lifetime one-time purchases do not support collection reminders."

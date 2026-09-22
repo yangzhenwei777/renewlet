@@ -1,0 +1,164 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-06-07 23:11+0800\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: zh-CN\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:6
+msgid "publicStatus.headerMeta"
+msgstr "Renewlet · 更新于 {time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:11
+msgid "publicStatus.moneySubtitleLocked"
+msgstr "使用 {month} 锁定汇率"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:25
+msgid "publicStatus.listLabel"
+msgstr "公开订阅列表"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:31
+msgid "publicStatus.notFoundTitle"
+msgstr "公开页不可用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:15
+msgid "publicStatus.visibleMoneySubtitle"
+msgstr "其中 {count} 个计入金额"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:28
+msgid "publicStatus.nextBillingDate"
+msgstr "到期/续费：{date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:18
+msgid "publicStatus.upcomingSubtitle"
+msgstr "即将到期或续费"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:14
+msgid "publicStatus.visibleCount"
+msgstr "展示订阅"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:9
+msgid "publicStatus.annualTotal"
+msgstr "年化总价"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:26
+msgid "publicStatus.startDate"
+msgstr "开始：{date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:30
+msgid "publicStatus.subscriptionDailyCostToDate"
+msgstr "持有日均 {amount}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:12
+msgid "publicStatus.moneySubtitleLive"
+msgstr "按 {currency} 实时汇率汇总"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:10
+msgid "publicStatus.moneySubtitle"
+msgstr "按 {currency} 汇总"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:33
+msgid "publicStatus.errorTitle"
+msgstr "无法加载公开页"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:29
+msgid "publicStatus.subscriptionDailyAverage"
+msgstr "日均 {amount}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:8
+msgid "publicStatus.monthlyTotalSubtitle"
+msgstr "日均 {amount} · {basis}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:24
+msgid "publicStatus.emptyTitle"
+msgstr "暂无可展示订阅"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:21
+msgid "publicStatus.generatedAt"
+msgstr "更新于 {time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:7
+msgid "publicStatus.monthlyTotal"
+msgstr "月均总价"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:17
+msgid "publicStatus.upcomingCount"
+msgstr "未来 7 天"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:13
+msgid "publicStatus.ratesLoading"
+msgstr "汇率更新中"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:16
+msgid "publicStatus.activeCount"
+msgstr "活跃/试用"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:23
+msgid "publicStatus.truncated"
+msgstr "订阅数量较多，仅展示前 500 条。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:5
+msgid "publicStatus.title"
+msgstr "订阅状态"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:22
+msgid "publicStatus.updatedAt"
+msgstr "记录更新：{time}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:34
+msgid "publicStatus.errorDescription"
+msgstr "请稍后刷新重试。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:27
+msgid "publicStatus.purchaseDate"
+msgstr "购买：{date}"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:20
+msgid "publicStatus.inactiveSubtitle"
+msgstr "过期、暂停或取消"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:32
+msgid "publicStatus.notFoundDescription"
+msgstr "这个链接不存在、已撤销或已重新生成。"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/public-status.ts:19
+msgid "publicStatus.inactiveCount"
+msgstr "非活跃"

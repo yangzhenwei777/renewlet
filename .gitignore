@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+.vercel
+.wrangler/
+wrangler.generated.jsonc
+wrangler.maintenance.generated.jsonc
+*.local
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+**/pb_data*/
+**/internal/static/public/*
+!**/internal/static/public/.gitkeep
+/playwright-report/
+/test-results/
+/e2e/.auth/
+# 官网视觉截图只作为本地人工基线，默认测试不再要求提交二进制 golden。
+/apps/website/tests/__screenshots__/
+/tmp/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

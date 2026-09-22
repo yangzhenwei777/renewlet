@@ -1,0 +1,177 @@
+[
+  {
+    "name": "daily exact scheduled minute",
+    "nowUtc": "2026-05-17T08:00:00Z",
+    "settings": {
+      "timezone": "UTC",
+      "notificationTimeLocal": "08:00",
+      "notificationReminderDays": 1
+    },
+    "subscriptions": [
+      {
+        "id": "sub_daily",
+        "name": "Daily SaaS",
+        "price": "10",
+        "currency": "USD",
+        "status": "active",
+        "billingCycle": "monthly",
+        "nextBillingDate": "2026-05-18",
+        "reminderDays": -1,
+        "repeatReminderEnabled": false,
+        "repeatReminderInterval": "1h",
+        "repeatReminderWindow": "72h"
+      }
+    ],
+    "windowMinutes": 2,
+    "force": false,
+    "expected": {
+      "due": true,
+      "reason": "not_in_time_window(delta=0m)",
+      "scheduledLocalDate": "2026-05-17",
+      "scheduledLocalTime": "08:00",
+      "timeZone": "UTC",
+      "scheduledInstantUtc": "2026-05-17T08:00:00Z",
+      "itemTypes": ["renewal"]
+    }
+  },
+  {
+    "name": "daily late inside two minute window",
+    "nowUtc": "2026-05-17T08:02:00Z",
+    "settings": {
+      "timezone": "UTC",
+      "notificationTimeLocal": "08:00",
+      "notificationReminderDays": 1
+    },
+    "subscriptions": [
+      {
+        "id": "sub_late",
+        "name": "Late SaaS",
+        "price": "12",
+        "currency": "USD",
+        "status": "active",
+        "billingCycle": "monthly",
+        "nextBillingDate": "2026-05-18",
+        "reminderDays": -1,
+        "repeatReminderEnabled": false,
+        "repeatReminderInterval": "1h",
+        "repeatReminderWindow": "72h"
+      }
+    ],
+    "windowMinutes": 2,
+    "force": false,
+    "expected": {
+      "due": true,
+      "reason": "not_in_time_window(delta=2m)",
+      "scheduledLocalDate": "2026-05-17",
+      "scheduledLocalTime": "08:00",
+      "timeZone": "UTC",
+      "scheduledInstantUtc": "2026-05-17T08:00:00Z",
+      "itemTypes": ["renewal"]
+    }
+  },
+  {
+    "name": "daily late outside two minute window",
+    "nowUtc": "2026-05-17T08:03:00Z",
+    "settings": {
+      "timezone": "UTC",
+      "notificationTimeLocal": "08:00",
+      "notificationReminderDays": 1
+    },
+    "subscriptions": [
+      {
+        "id": "sub_late_outside",
+        "name": "Outside SaaS",
+        "price": "12",
+        "currency": "USD",
+        "status": "active",
+        "billingCycle": "monthly",
+        "nextBillingDate": "2026-05-18",
+        "reminderDays": -1,
+        "repeatReminderEnabled": false,
+        "repeatReminderInterval": "1h",
+        "repeatReminderWindow": "72h"
+      }
+    ],
+    "windowMinutes": 2,
+    "force": false,
+    "expected": {
+      "due": false,
+      "reason": "not_in_time_window",
+      "itemTypes": []
+    }
+  },
+  {
+    "name": "yesterday local date survives UTC cross day",
+    "nowUtc": "2026-05-17T10:01:00Z",
+    "settings": {
+      "timezone": "Pacific/Kiritimati",
+      "notificationTimeLocal": "23:59",
+      "notificationReminderDays": 1
+    },
+    "subscriptions": [
+      {
+        "id": "sub_cross_day",
+        "name": "Cross Day SaaS",
+        "price": "15",
+        "currency": "USD",
+        "status": "active",
+        "billingCycle": "monthly",
+        "nextBillingDate": "2026-05-18",
+        "reminderDays": 1,
+        "repeatReminderEnabled": false,
+        "repeatReminderInterval": "1h",
+        "repeatReminderWindow": "72h"
+      }
+    ],
+    "windowMinutes": 2,
+    "force": false,
+    "expected": {
+      "due": true,
+      "reason": "not_in_time_window(delta=2m)",
+      "scheduledLocalDate": "2026-05-17",
+      "scheduledLocalTime": "23:59",
+      "timeZone": "Pacific/Kiritimati",
+      "scheduledInstantUtc": "2026-05-17T09:59:00Z",
+      "itemTypes": ["renewal"]
+    }
+  },
+  {
+    "name": "repeat reminder due before target date",
+    "nowUtc": "2026-05-17T14:00:00Z",
+    "settings": {
+      "timezone": "UTC",
+      "notificationTimeLocal": "08:00",
+      "notificationReminderDays": 1
+    },
+    "subscriptions": [
+      {
+        "id": "sub_repeat",
+        "name": "Repeat SaaS",
+        "price": "20",
+        "currency": "USD",
+        "status": "active",
+        "billingCycle": "monthly",
+        "nextBillingDate": "2026-05-18",
+        "reminderDays": 1,
+        "repeatReminderEnabled": true,
+        "repeatReminderInterval": "3h",
+        "repeatReminderWindow": "24h"
+      }
+    ],
+    "windowMinutes": 2,
+    "force": false,
+    "expected": {
+      "due": true,
+      "reason": "repeat_reminder_due",
+      "scheduledLocalDate": "2026-05-17",
+      "scheduledLocalTime": "14:00",
+      "timeZone": "UTC",
+      "scheduledInstantUtc": "2026-05-17T14:00:00Z",
+      "itemTypes": ["renewal"],
+      "repeatReminder": {
+        "interval": "3h",
+        "window": "24h"
+      }
+    }
+  }
+]

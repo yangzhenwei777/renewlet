@@ -1,0 +1,6 @@
+{
+  "supportedLocales": ["zh-CN", "en-US"],
+  "sourceLocale": "zh-CN",
+  "fallbackLocale": "en-US",
+  "defaultPreference": "auto"
+}
