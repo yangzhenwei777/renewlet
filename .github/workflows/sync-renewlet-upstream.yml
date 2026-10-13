@@ -1,0 +1,243 @@
+name: Sync Renewlet Upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # 这个 workflow 会出现在 Cloudflare Deploy Button 生成仓库里；官方源仓库不能反向同步自己。
+    if: ${{ github.repository != 'zhiyingzzhou/renewlet' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout generated repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Sync upstream tree
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          target_branch="${GITHUB_REF_NAME:-main}"
+          preserve_path="${RUNNER_TEMP}/renewlet-cloudflare-config.json"
+          workflows_backup="${RUNNER_TEMP}/renewlet-workflows"
+          workflows_present="${RUNNER_TEMP}/renewlet-workflows-present"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "${target_branch}"
+          git switch "${target_branch}" 2>/dev/null || git switch -c "${target_branch}" "origin/${target_branch}"
+          git pull --ff-only origin "${target_branch}"
+
+          mkdir -p "${workflows_backup}"
+          if [ -d .github/workflows ]; then
+            cp -a .github/workflows/. "${workflows_backup}/"
+            touch "${workflows_present}"
+          fi
+
+          PRESERVE_PATH="${preserve_path}" node <<'NODE'
+          const { readFileSync, writeFileSync } = require("node:fs");
+
+          function stripJsoncComments(input) {
+            let output = "";
+            let inString = false;
+            let quote = "";
+            let escaped = false;
+            for (let index = 0; index < input.length; index += 1) {
+              const char = input[index];
+              const next = input[index + 1];
+              if (inString) {
+                output += char;
+                if (escaped) escaped = false;
+                else if (char === "\\") escaped = true;
+                else if (char === quote) {
+                  inString = false;
+                  quote = "";
+                }
+                continue;
+              }
+              if (char === "\"" || char === "'") {
+                inString = true;
+                quote = char;
+                output += char;
+                continue;
+              }
+              if (char === "/" && next === "/") {
+                while (index < input.length && input[index] !== "\n") index += 1;
+                output += "\n";
+                continue;
+              }
+              if (char === "/" && next === "*") {
+                index += 2;
+                while (index < input.length && !(input[index] === "*" && input[index + 1] === "/")) index += 1;
+                index += 1;
+                continue;
+              }
+              output += char;
+            }
+            return output;
+          }
+
+          function findBinding(config, key, binding) {
+            const match = Array.isArray(config[key])
+              ? config[key].find((item) => item && typeof item === "object" && item.binding === binding)
+              : undefined;
+            if (!match) throw new Error(`wrangler.jsonc must contain ${binding} in ${key}.`);
+            return match;
+          }
+
+          function findQueueProducer(config, binding) {
+            return Array.isArray(config.queues?.producers)
+              ? config.queues.producers.find((item) => item && typeof item === "object" && item.binding === binding)
+              : undefined;
+          }
+
+          function findQueueConsumer(config, queueName) {
+            return Array.isArray(config.queues?.consumers)
+              ? config.queues.consumers.find((item) => item && typeof item === "object" && item.queue === queueName)
+              : undefined;
+          }
+
+          const config = JSON.parse(stripJsoncComments(readFileSync("wrangler.jsonc", "utf8")));
+          const d1 = findBinding(config, "d1_databases", "DB");
+          const r2 = findBinding(config, "r2_buckets", "ASSETS_BUCKET");
+          const queue = findQueueProducer(config, "MEDIA_ICON_INDEX_REFRESH_QUEUE");
+          const queueConsumer = queue?.queue ? findQueueConsumer(config, queue.queue) : undefined;
+          writeFileSync(
+            process.env.PRESERVE_PATH,
+            JSON.stringify({
+              name: config.name,
+              database_name: d1.database_name,
+              database_id: d1.database_id,
+              bucket_name: r2.bucket_name,
+              media_icon_index_refresh_queue_name: queue?.queue,
+              media_icon_index_refresh_dead_letter_queue_name: queueConsumer?.dead_letter_queue,
+              vars: config.vars && typeof config.vars === "object" && !Array.isArray(config.vars) ? config.vars : {},
+            }),
+          );
+          NODE
+
+          git remote add upstream https://github.com/zhiyingzzhou/renewlet.git 2>/dev/null || git remote set-url upstream https://github.com/zhiyingzzhou/renewlet.git
+          git fetch upstream main
+          upstream_ref="FETCH_HEAD"
+          upstream_sha="$(git rev-parse --short=12 "${upstream_ref}")"
+
+          # 生成仓库和上游没有 fork 关系；这里只同步文件树，并保留用户仓库里的 Cloudflare 资源配置和 workflow 入口。
+          git restore --source "${upstream_ref}" --staged --worktree :/
+
+          if [ -f "${workflows_present}" ]; then
+            rm -rf .github/workflows
+            mkdir -p .github/workflows
+            cp -a "${workflows_backup}/." .github/workflows/
+          fi
+
+          PRESERVE_PATH="${preserve_path}" node <<'NODE'
+          const { readFileSync, writeFileSync } = require("node:fs");
+
+          function stripJsoncComments(input) {
+            let output = "";
+            let inString = false;
+            let quote = "";
+            let escaped = false;
+            for (let index = 0; index < input.length; index += 1) {
+              const char = input[index];
+              const next = input[index + 1];
+              if (inString) {
+                output += char;
+                if (escaped) escaped = false;
+                else if (char === "\\") escaped = true;
+                else if (char === quote) {
+                  inString = false;
+                  quote = "";
+                }
+                continue;
+              }
+              if (char === "\"" || char === "'") {
+                inString = true;
+                quote = char;
+                output += char;
+                continue;
+              }
+              if (char === "/" && next === "/") {
+                while (index < input.length && input[index] !== "\n") index += 1;
+                output += "\n";
+                continue;
+              }
+              if (char === "/" && next === "*") {
+                index += 2;
+                while (index < input.length && !(input[index] === "*" && input[index + 1] === "/")) index += 1;
+                index += 1;
+                continue;
+              }
+              output += char;
+            }
+            return output;
+          }
+
+          function findBinding(config, key, binding) {
+            const match = Array.isArray(config[key])
+              ? config[key].find((item) => item && typeof item === "object" && item.binding === binding)
+              : undefined;
+            if (!match) throw new Error(`wrangler.jsonc must contain ${binding} in ${key}.`);
+            return match;
+          }
+
+          function findQueueProducer(config, binding) {
+            return Array.isArray(config.queues?.producers)
+              ? config.queues.producers.find((item) => item && typeof item === "object" && item.binding === binding)
+              : undefined;
+          }
+
+          function findQueueConsumer(config, queueName) {
+            return Array.isArray(config.queues?.consumers)
+              ? config.queues.consumers.find((item) => item && typeof item === "object" && item.queue === queueName)
+              : undefined;
+          }
+
+          const preserved = JSON.parse(readFileSync(process.env.PRESERVE_PATH, "utf8"));
+          const config = JSON.parse(stripJsoncComments(readFileSync("wrangler.jsonc", "utf8")));
+          const d1 = findBinding(config, "d1_databases", "DB");
+          const r2 = findBinding(config, "r2_buckets", "ASSETS_BUCKET");
+          const queue = findQueueProducer(config, "MEDIA_ICON_INDEX_REFRESH_QUEUE");
+          config.name = preserved.name;
+          d1.database_name = preserved.database_name;
+          d1.database_id = preserved.database_id;
+          r2.bucket_name = preserved.bucket_name;
+          if (queue && preserved.media_icon_index_refresh_queue_name) {
+            const templateQueueName = queue.queue;
+            queue.queue = preserved.media_icon_index_refresh_queue_name;
+            const consumer =
+              findQueueConsumer(config, templateQueueName) ??
+              findQueueConsumer(config, preserved.media_icon_index_refresh_queue_name);
+            if (consumer) {
+              consumer.queue = preserved.media_icon_index_refresh_queue_name;
+              if (preserved.media_icon_index_refresh_dead_letter_queue_name) {
+                consumer.dead_letter_queue = preserved.media_icon_index_refresh_dead_letter_queue_name;
+              }
+            }
+          }
+          config.vars = {
+            ...(config.vars && typeof config.vars === "object" && !Array.isArray(config.vars) ? config.vars : {}),
+            ...preserved.vars,
+          };
+          writeFileSync("wrangler.jsonc", `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Renewlet upstream ${upstream_sha} is already applied. No commit was created."
+            exit 0
+          fi
+
+          git commit -m "chore: sync Renewlet upstream ${upstream_sha}"
+          git push origin "HEAD:${target_branch}"
