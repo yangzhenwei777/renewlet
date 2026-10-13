@@ -15,6 +15,10 @@ const schemaDataMigrationsTable = "renewlet_schema_data_migrations"
 const (
 	settingsLocalePreferenceMigrationName = "settings_locale_preference_v1"
 	settingsLocalePreferenceRecoveryPoint = "renewlet_pre_settings_locale_preference_v1.zip"
+
+	settingsLocalePreferenceGuardV2MigrationName            = "settings_locale_preference_guard_v2"
+	settingsLocalePreferenceGuardV2RecoveryPoint            = "renewlet_pre_settings_locale_preference_guard_v2.zip"
+	subscriptionCancelledNotificationSemanticsMigrationName = "subscription_cancelled_notification_semantics_v1"
 )
 
 type schemaDataMigration struct {
@@ -39,6 +43,16 @@ func runSchemaDataMigrations(app core.App) error {
 				Preflight:    preflightSettingsLocalePreferenceMigration,
 				Verify:       verifySettingsLocalePreferenceInvariant,
 				InstallGuard: installSettingsLocalePreferenceGuard,
+				VerifyGuard:  verifySettingsLocalePreferenceGuardV1,
+			},
+		},
+		{
+			Name: settingsLocalePreferenceGuardV2MigrationName,
+			Run:  func(core.App) error { return nil },
+			Exclusive: &exclusiveSchemaDataMigration{
+				Preflight:    preflightSettingsLocalePreferenceMigration,
+				Verify:       verifySettingsLocalePreferenceInvariant,
+				InstallGuard: replaceSettingsLocalePreferenceGuard,
 				VerifyGuard:  verifySettingsLocalePreferenceGuard,
 			},
 		},
@@ -46,6 +60,8 @@ func runSchemaDataMigrations(app core.App) error {
 		{Name: "backfill_autodates_v1", Run: func(app core.App) error { return backfillAutodates(app, schemaAutodateCollections...) }},
 		{Name: "money_strings_v1", Run: migrateMoneyStrings},
 		{Name: "subscription_scheduler_states_v1", Run: backfillSubscriptionSchedulerStates},
+		// cancelled 语义改变的是可重建的 repeat 派生数据；事实表和提醒配置不改写，启动时先收敛 schedule/count 再开放通知入口。
+		{Name: subscriptionCancelledNotificationSemanticsMigrationName, Run: backfillCancelledNotificationSemantics},
 		{Name: "legacy_hash_only_calendar_feeds_v1", Run: deleteLegacyHashOnlyCalendarFeeds},
 		{Name: "cost_sharing_current_user_payer_shape_v1", Run: migrateCostSharingCurrentUserPayerShape},
 		{Name: "cost_sharing_collection_reminder_mirror_v2", Run: backfillCostSharingCollectionReminderMirrors},
@@ -245,4 +261,50 @@ func backfillSubscriptionSchedulerStates(app core.App) error {
 			return nil
 		}
 	}
+}
+
+func backfillCancelledNotificationSemantics(app core.App) error {
+	var users []struct {
+		ID string `db:"id"`
+	}
+	// 旧版本只可能留下几类 cancelled 语义漂移；先用一次 owner-scoped 聚合查询定位它们，
+	// 避免新库或已经完成 scheduler migration 的大库再次为每个用户全量重建。
+	err := app.DB().NewQuery(`SELECT users.id AS id
+		FROM users
+		LEFT JOIN subscription_scheduler_states AS scheduler ON scheduler.user = users.id
+		WHERE scheduler.id IS NULL
+		   OR EXISTS (
+				SELECT 1
+				FROM subscription_repeat_schedule AS repeat_schedule
+				JOIN subscriptions
+				  ON subscriptions.id = repeat_schedule.subscription_id
+				 AND subscriptions.user = repeat_schedule.user_id
+				WHERE repeat_schedule.user_id = users.id
+				  AND subscriptions.status = 'cancelled'
+		   )
+		   OR COALESCE(scheduler.repeatReminderCount, 0) != (
+				SELECT COUNT(*)
+				FROM subscriptions
+				WHERE subscriptions.user = users.id
+				  AND subscriptions.repeatReminderEnabled = true
+				  AND subscriptions.status != 'cancelled'
+		   )
+		   OR COALESCE(scheduler.nextRepeatNotificationDueAtUTC, '') != COALESCE((
+				SELECT next_due_at_utc
+				FROM subscription_repeat_schedule
+				WHERE user_id = users.id
+				ORDER BY next_due_at_utc, subscription_id
+				LIMIT 1
+		   ), '')
+		ORDER BY users.id`).All(&users)
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		// 每个受影响用户内的 refresh 以事务重建 repeat schedule、next due 和 repeat count；失败时启动中止，下一次可幂等重放。
+		if _, err := refreshSubscriptionSchedulerStateWithOptions(app, user.ID, subscriptionSchedulerRefreshOptions{ResetAutoRenewCheck: false}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

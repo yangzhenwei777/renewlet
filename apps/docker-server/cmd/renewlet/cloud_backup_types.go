@@ -9,18 +9,22 @@ import (
 )
 
 const (
-	cloudBackupTransportSchemaVersion       = 1
-	renewletExportSchemaVersion             = 1
-	cloudBackupProviderWebDAV               = "webdav"
-	cloudBackupProviderS3                   = "s3"
-	cloudBackupStatusIdle                   = "idle"
-	cloudBackupStatusSuccess                = "success"
-	cloudBackupStatusFailed                 = "failed"
-	cloudBackupDefaultScheduleTime          = "03:00"
-	cloudBackupDefaultScheduleWeekday       = "monday"
-	cloudBackupDefaultRetention             = 7
-	cloudBackupMaxRetention                 = 30
-	cloudBackupSnapshotMaxBytes       int64 = 16 << 20
+	cloudBackupTransportSchemaVersion        = 1
+	renewletExportSchemaVersion              = 1
+	cloudBackupProviderWebDAV                = "webdav"
+	cloudBackupProviderS3                    = "s3"
+	cloudBackupS3AddressingAuto              = "auto"
+	cloudBackupS3AddressingPathStyle         = "pathStyle"
+	cloudBackupS3AddressingVirtualHost       = "virtualHost"
+	cloudBackupDefaultRemotePrefix           = "renewlet"
+	cloudBackupStatusIdle                    = "idle"
+	cloudBackupStatusSuccess                 = "success"
+	cloudBackupStatusFailed                  = "failed"
+	cloudBackupDefaultScheduleTime           = "03:00"
+	cloudBackupDefaultScheduleWeekday        = "monday"
+	cloudBackupDefaultRetention              = 7
+	cloudBackupMaxRetention                  = 30
+	cloudBackupSnapshotMaxBytes        int64 = 16 << 20
 )
 
 type cloudBackupConfigResponse struct {
@@ -75,13 +79,14 @@ type cloudBackupWebDAVSettings struct {
 }
 
 type cloudBackupS3Settings struct {
-	Endpoint    string `json:"endpoint"`
-	Region      string `json:"region"`
-	Bucket      string `json:"bucket"`
-	Prefix      string `json:"prefix,omitempty"`
-	AccessKeyID string `json:"accessKeyId,omitempty"`
-	// 旧配置可能带 addressingStyle；NormalizeAndValidate 会清空它，S3 SDK 寻址只按协议级 endpoint 形态推断。
-	AddressingStyle string `json:"addressingStyle,omitempty"`
+	Endpoint string `json:"endpoint"`
+	Region   string `json:"region"`
+	Bucket   string `json:"bucket"`
+	// nil 表示旧配置或请求未提供 Prefix；非 nil 的空字符串表示用户明确选择 Bucket 根目录。
+	Prefix      *string `json:"prefix,omitempty"`
+	AccessKeyID string  `json:"accessKeyId,omitempty"`
+	// 缺省值在读取或保存时归一为 auto；旧运行面缺少该字段时仍可无损读取。
+	AddressingStyle string `json:"addressingStyle"`
 }
 
 type cloudBackupStoredConfig struct {

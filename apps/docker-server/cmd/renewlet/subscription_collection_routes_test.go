@@ -125,10 +125,7 @@ func TestSubscriptionCollectionRoutesKeepLightweightAndCompleteShapesSeparate(t 
 		t.Fatalf("expected detail 200, got %d: %s", detailResponse.Code, detailResponse.Body.String())
 	}
 	detail := decodeAPISuccessDataForTest[subscriptionResponse](t, detailResponse.Body.Bytes()).Subscription
-	detailMap, err := subscriptionDetailResponseMap(detail)
-	if err != nil {
-		t.Fatal(err)
-	}
+	detailMap := jsonObjectForTest(t, detail)
 	for field := range fixture.CompleteSubscription {
 		if _, ok := detailMap[field]; !ok {
 			t.Fatalf("detail response must contain shared fixture field %q: %#v", field, detailMap)

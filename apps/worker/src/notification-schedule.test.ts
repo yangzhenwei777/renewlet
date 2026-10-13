@@ -5,7 +5,7 @@ import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
 import { apiSubscriptionSchema, type ApiSubscription } from "@renewlet/shared/schemas/subscriptions";
 import { collectNotificationItemsForSchedule } from "./notifications";
-import { getNotificationScheduleDecision } from "./notification-schedule";
+import { getNextLocalScheduleOccurrence, getNotificationScheduleDecision } from "./notification-schedule";
 
 vi.mock("./smtp", () => ({
   notificationSmtpConfig: () => {
@@ -56,6 +56,10 @@ describe("Cloudflare notification schedule", () => {
     const decision = getNotificationScheduleDecision(new Date(fixture.nowUtc), appSettings, subscriptions, fixture.windowMinutes, fixture.force);
 
     expect(decision.due).toBe(fixture.expected.due);
+    if (fixture.expected.nextDailyInstantUtc) {
+      expect(getNextLocalScheduleOccurrence(new Date(fixture.nowUtc), appSettings.timezone, appSettings.notificationTimeLocal, false).scheduledInstantUtc)
+        .toBe(fixture.expected.nextDailyInstantUtc);
+    }
     if (fixture.expected.due) {
       expect(decision.reason).toBe(fixture.expected.reason);
       expect(decision).toMatchObject({

@@ -12,13 +12,15 @@ export function cloudBackupProviderFromRequest(request: Request, locale: AppLoca
   if (!params.has("provider")) return { hasProvider: false };
   const provider = params.get("provider")?.trim();
   if (provider !== "webdav" && provider !== "s3") {
-    throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_INVALID", "provider_invalid", "Use provider=webdav or provider=s3.");
+    throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_INVALID", "Use provider=webdav or provider=s3.");
   }
   return { hasProvider: true, provider };
 }
 
-export function cloudBackupProviderParameterError(locale: AppLocale, code: string, _reason: string, message: string): HttpError {
+export function cloudBackupProviderParameterError(locale: AppLocale, code: string, message: string): HttpError {
   return new HttpError(400, serverText(locale, "cloudBackup.providerInvalid"), code, {
-    rawResponseText: message,
+    operation: "request-validation",
+    target: "cloud backup API",
+    clientMessage: message,
   });
 }

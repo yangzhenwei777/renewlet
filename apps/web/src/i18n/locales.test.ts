@@ -10,8 +10,7 @@ import {
   writeAccountLocaleProjection,
 } from "./locales";
 import { ACCOUNT_LOCALE_PROJECTION_KEY } from "./account-locale-projection";
-import { pb } from "@/lib/pocketbase";
-import { setApiLocale } from "./api-locale";
+import { getLocaleHeaders, setApiLocale } from "./api-locale";
 import { writeProductSession } from "@/services/product-session";
 
 let restoreNavigator: (() => void) | null = null;
@@ -141,23 +140,11 @@ describe("locales", () => {
   });
 });
 
-describe("PocketBase locale headers", () => {
-  it("keeps headers as a plain object so the SDK can serialize JSON bodies", async () => {
+describe("API locale headers", () => {
+  it("reads both locale headers from the latest committed language", () => {
     setApiLocale("en-US");
-
-    const result = await pb.beforeSend?.("/api/example", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: { ok: true },
-    });
-
-    expect(result?.options?.["headers"]).not.toBeInstanceOf(Headers);
-    expect(result?.options?.["headers"]).toMatchObject({
-      "content-type": "application/json",
-      "accept-language": "en-US",
-      "x-renewlet-locale": "en-US",
-    });
-
+    expect(getLocaleHeaders()).toEqual({ "Accept-Language": "en-US", "X-Renewlet-Locale": "en-US" });
     setApiLocale("zh-CN");
+    expect(getLocaleHeaders()).toEqual({ "Accept-Language": "zh-CN", "X-Renewlet-Locale": "zh-CN" });
   });
 });

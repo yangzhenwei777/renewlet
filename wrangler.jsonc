@@ -3,9 +3,13 @@
   "name": "renewlet",
   "main": "apps/worker/src/index.ts",
   "compatibility_date": "2026-06-24",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "alias": {
+    "@aws-sdk/xml-builder": "@aws-sdk/xml-builder/dist-cjs/index.js"
+  },
   "observability": {
-    // Worker 日志/trace 是线上排障入口；业务错误仍由结构化 API error body 返回给当前操作者。
     "enabled": true,
     "logs": {
       "enabled": true,
@@ -17,27 +21,27 @@
     }
   },
   "dev": {
-    // 本地移动端/局域网验收需要监听所有网卡；这个设置只影响 wrangler dev，不改变 Cloudflare 生产入口。
     "ip": "0.0.0.0",
     "port": 8787,
     "local_protocol": "http"
   },
   "assets": {
     "directory": "./apps/web/dist",
-    // ASSETS binding 供 Worker 读取内置图标 seed gzip；大静态数据不能重新打进 Worker bundle。
     "binding": "ASSETS",
-    // 静态资源使用 SPA fallback；产品 API 和公开 ICS 必须先交给 Worker 做认证/Token 校验。
     "not_found_handling": "single-page-application",
-    // 只让精确 ICS feed 路径进 Worker；React 的 /calendar 页面继续走静态资源 SPA fallback。
-    "run_worker_first": ["/api/*", "/calendar/renewals.ics", "/__scheduled"]
+    "run_worker_first": [
+      "/api/*",
+      "/calendar/renewals.ics",
+      "/__scheduled"
+    ]
   },
   "triggers": {
-    // Worker Cron 每分钟 tick；真正的用户本地时间窗口和幂等由 notification_jobs 控制。
-    "crons": ["* * * * *"]
+    "crons": [
+      "* * * * *"
+    ]
   },
   "d1_databases": [
     {
-      // DB 是结构化数据事实源；部署前必须先应用 apps/worker/migrations。
       "binding": "DB",
       "database_name": "renewlet",
       "database_id": "539586de-93db-414a-a894-4436c6e2b058",
@@ -46,22 +50,19 @@
   ],
   "r2_buckets": [
     {
-      // ASSETS_BUCKET 只存对象；读取权限必须先经过 D1 assets metadata 的 owner 校验。
       "binding": "ASSETS_BUCKET",
-      "bucket_name": "renewlet-assets","preview_bucket_name": "renewlet-assets"
+      "bucket_name": "renewlet-assets"
     }
   ],
   "queues": {
     "producers": [
       {
-        // HTTP refresh 只投递后台任务；真正的官方 registry 拉取、校验和 R2/D1 切换由 consumer 执行。
         "binding": "MEDIA_ICON_INDEX_REFRESH_QUEUE",
         "queue": "renewlet-media-icon-index-refresh"
       }
     ],
     "consumers": [
       {
-        // 图标索引是全局 active 指针，批量和并发都固定为 1，避免两个 provider job 交错切 D1/R2。
         "queue": "renewlet-media-icon-index-refresh",
         "max_batch_size": 1,
         "max_batch_timeout": 5,
@@ -72,9 +73,7 @@
     ]
   },
   "vars": {
-    // Deploy Button 会把模板 vars 暴露给用户填写；构建元信息只允许 CI 写入生成配置。
     "SETUP_ENABLED": "true",
-    // 正常配置永远显式关闭维护模式；排他迁移只通过生成的 maintenance 配置打开。
     "RENEWLET_MAINTENANCE_MODE": "false"
   }
 }

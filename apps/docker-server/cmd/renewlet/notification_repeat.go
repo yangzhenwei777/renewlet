@@ -82,7 +82,7 @@ func repeatReminderIntervalHours(value string) int {
 
 func getRepeatScheduleDecision(now time.Time, settings appSettings, subscriptions []notificationSubscription, windowMinutes int) localScheduleDecision {
 	for _, sub := range subscriptions {
-		if isDisabledReminderDays(sub.ReminderDays) {
+		if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) {
 			// -2 静默订阅不参与 repeat due，否则会绕过主通知的跳过入口。
 			continue
 		}
@@ -177,7 +177,7 @@ func getNextRepeatScheduleOccurrence(now time.Time, settings appSettings, subscr
 	var nextInstant time.Time
 	found := false
 	for _, sub := range subscriptions {
-		if isDisabledReminderDays(sub.ReminderDays) {
+		if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) {
 			// 下一次预览也跳过 -2，避免 UI 显示一条不会发送的重复提醒。
 			continue
 		}
@@ -266,7 +266,7 @@ func collectUpcomingRepeatBatches(now time.Time, settings appSettings, subscript
 	end := now.UTC().Add(time.Duration(maxInt(days, 1)) * 24 * time.Hour)
 	batchesByKey := map[string]*upcomingNotificationBatch{}
 	for _, sub := range subscriptions {
-		if isDisabledReminderDays(sub.ReminderDays) {
+		if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) {
 			// 批次聚合跳过 -2，保证未来预览和实际 Cron 同源。
 			continue
 		}

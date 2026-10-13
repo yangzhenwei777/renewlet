@@ -3,7 +3,9 @@ package main
 // 服务端 locale 测试保护 X-Renewlet-Locale 优先级和 catalog placeholder；通知/错误文案不能依赖前端 Lingui runtime。
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -33,44 +35,24 @@ func TestRequestLocalePrefersExplicitHeader(t *testing.T) {
 }
 
 func TestAcceptLanguageLocaleUsesHighestQualitySupportedLanguage(t *testing.T) {
-	if got := acceptLanguageLocale(""); got != localeEnUS {
-		t.Fatalf("expected empty Accept-Language to fall back to en-US, got %s", got)
+	data, err := os.ReadFile("../../../../packages/shared/src/contract-fixtures/server-locale-resolution.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := acceptLanguageLocale("en-US;q=0.7, zh-CN;q=0.9"); got != localeZhCN {
-		t.Fatalf("expected zh-CN, got %s", got)
+	var fixtures []struct {
+		Name     string `json:"name"`
+		Header   string `json:"header"`
+		Expected string `json:"expected"`
 	}
-	if got := acceptLanguageLocale("fr-FR, en;q=0.8"); got != localeEnUS {
-		t.Fatalf("expected en-US, got %s", got)
+	if err := json.Unmarshal(data, &fixtures); err != nil {
+		t.Fatal(err)
 	}
-	if got := acceptLanguageLocale("en-GB, zh-CN;q=0.2"); got != localeEnUS {
-		t.Fatalf("expected en-US for en-GB, got %s", got)
-	}
-	if got := acceptLanguageLocale("en-US;q=0, zh-Hant;q=0.8"); got != localeZhCN {
-		t.Fatalf("expected zh-CN for zh-Hant fallback, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=0.8junk, en-US;q=0.7"); got != localeEnUS {
-		t.Fatalf("expected malformed quality item to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=1.1, en-US;q=0.4"); got != localeEnUS {
-		t.Fatalf("expected out-of-range quality item to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=NaN, en-US;q=0.4"); got != localeEnUS {
-		t.Fatalf("expected non-finite quality item to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=0x1, en-US;q=0.4"); got != localeEnUS {
-		t.Fatalf("expected non-decimal quality item to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=0.1234, en-US;q=0.4"); got != localeEnUS {
-		t.Fatalf("expected over-precise quality item to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-$$$;q=0.9, en-US;q=0.8"); got != localeEnUS {
-		t.Fatalf("expected invalid language tag to be skipped, got %s", got)
-	}
-	if got := acceptLanguageLocale("*;q=0.9, zh-CN;q=0.8"); got != localeEnUS {
-		t.Fatalf("expected wildcard to select the default locale by quality, got %s", got)
-	}
-	if got := acceptLanguageLocale("zh-CN;q=0.5, en-US;q=0.5"); got != localeZhCN {
-		t.Fatalf("expected original order to break equal-quality ties, got %s", got)
+	for _, fixture := range fixtures {
+		t.Run(fixture.Name, func(t *testing.T) {
+			if got := acceptLanguageLocale(fixture.Header); got != appLocale(fixture.Expected) {
+				t.Fatalf("Accept-Language %q = %s, want %s", fixture.Header, got, fixture.Expected)
+			}
+		})
 	}
 }
 

@@ -1,5 +1,6 @@
 // Worker 日历 Feed 测试保护 D1 token scope、公开 ICS 路由和撤销语义，必须与 Go 后端行为保持一致。
 import { describe, expect, it } from "vitest";
+import labelFixtures from "../../../packages/shared/src/contract-fixtures/config-label-locales.json";
 import { readSuccessData } from "./api-test-helpers";
 import {
   calendarFeedIcs,
@@ -323,6 +324,39 @@ describe("calendar feed worker handlers", () => {
 
     await expect(calendarFeedIcs(new Request("https://renewlet.example/calendar/renewals.ics?token=missing"), env)).rejects.toMatchObject({ status: 404 });
     expect(env.__state.calendarFeedsTableExists).toBe(false);
+  });
+
+  it.each(labelFixtures)("renders Russian ICS labels for $name", async ({ labels, expected, key, value }) => {
+    const customConfig = createCalendarFeedTestCustomConfig();
+    // 测试内置支付方式时使用事实源的官方英文值，才能验证“未改名才翻译”的约束。
+    customConfig.paymentMethods[0] = {
+      ...customConfig.paymentMethods[0],
+      id: "credit_card",
+      value: "credit_card",
+      labels: { "zh-CN": "信用卡", "en-US": "Credit card" },
+    };
+    const isPayment = key?.startsWith("payment.");
+    if (isPayment) {
+      customConfig.paymentMethods[0] = { ...customConfig.paymentMethods[0], value, id: value, labels };
+    } else {
+      customConfig.categories[0] = { ...customConfig.categories[0], value, id: value, labels, color: "hsl(265 68% 58%)" };
+    }
+    const env = await createCalendarFeedTestEnv({
+      localePreference: "ru-RU",
+      customConfigJson: JSON.stringify(customConfig),
+      subscriptions: [subscriptionRow("sub_ru", "Plan", "active", "monthly", "2099-06-02", {
+        category: isPayment ? "developer_tools" : value,
+        payment_method: isPayment ? value : "credit_card",
+      })],
+    });
+    const response = await createCalendarFeed(authorizedRequest("https://renewlet.example/api/app/calendar-feed", {
+      body: "{}", method: "POST",
+    }), env);
+    const created = await readSuccessData<{ calendarFeed: { feedUrl: string } }>(response);
+    const ics = unfoldIcsText(await (await calendarFeedIcs(new Request(created.calendarFeed.feedUrl), env)).text());
+    expect(ics).toContain(`CATEGORIES:${isPayment ? "Инструменты разработчика" : expected["ru-RU"]}`);
+    expect(ics).toContain(`Способ оплаты: ${isPayment ? expected["ru-RU"] : "Кредитная карта"}`);
+    expect(env.__state.customConfigJson).toBe(JSON.stringify(customConfig));
   });
 
   it("falls back to built-in labels when custom config is missing", async () => {

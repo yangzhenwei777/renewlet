@@ -6,7 +6,6 @@ package main
 import (
 	"bytes"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -76,7 +75,7 @@ func buildCloudBackupExportZip(app core.App, user *core.Record) (cloudBackupSnap
 }
 
 type cloudBackupExportBundle struct {
-	Payload  map[string]interface{}
+	Payload  cloudBackupExportPayload
 	Assets   []cloudBackupExportAsset
 	Manifest cloudBackupExportManifest
 }
@@ -150,59 +149,46 @@ func buildCloudBackupExportBundle(app core.App, user *core.Record, exportedAt ti
 		return cloudBackupExportBundle{}, err
 	}
 	assetCollector := newCloudBackupExportAssetCollector(app, user.Id)
-	subscriptions := make([]interface{}, 0, len(rows))
+	subscriptions := make([]subscriptionDetailResponse, 0, len(rows))
 	for _, row := range rows {
-		subscription, err := subscriptionDetailResponseMap(subscriptionAPIFromRecord(row))
-		if err != nil {
-			return cloudBackupExportBundle{}, err
-		}
-		if logo, ok := subscription["logo"].(string); ok {
+		subscription := subscriptionAPIFromRecord(row)
+		if subscription.Logo != nil {
+			logo := *subscription.Logo
 			if assetID := privateAssetIDFromPath(logo); assetID != "" {
 				if assetPath, ok := assetCollector.resolve(assetID, logo, "subscription.logo", row.Id); ok {
-					subscription["logo"] = assetPath
+					subscription.Logo = &assetPath
 				} else {
-					delete(subscription, "logo")
+					subscription.Logo = nil
 				}
 			}
 		}
 		subscriptions = append(subscriptions, subscription)
 	}
-	data := map[string]interface{}{
-		"subscriptions": subscriptions,
-	}
+	data := cloudBackupExportData{Subscriptions: subscriptions}
 	// 云快照只导出可恢复的产品资料；账号安全主密钥和 session/MFA/passkey/recovery/ticket 都必须由用户重新建立。
 	if settings, ok, err := cloudBackupExportSettings(app, user); err != nil {
 		return cloudBackupExportBundle{}, err
 	} else if ok {
-		data["settings"] = settings
+		data.Settings = settings
 	}
 	if config, ok, err := cloudBackupExportCustomConfig(app, user, assetCollector); err != nil {
 		return cloudBackupExportBundle{}, err
 	} else if ok {
-		data["customConfig"] = config
+		data.CustomConfig = config
 	}
 	if snapshots, ok, err := cloudBackupExportExchangeRateSnapshots(app, user); err != nil {
 		return cloudBackupExportBundle{}, err
 	} else if ok {
-		data["exchangeRateSnapshots"] = snapshots
+		data.ExchangeRateSnapshots = snapshots
 	}
-	if len(assetCollector.assets) > 0 {
-		exportAssets := make([]interface{}, 0, len(assetCollector.assets))
-		for _, asset := range assetCollector.assets {
-			exportAssets = append(exportAssets, map[string]interface{}{
-				"id":        asset.ID,
-				"path":      asset.Path,
-				"mimeType":  asset.MimeType,
-				"sizeBytes": asset.SizeBytes,
-			})
-		}
-		data["assets"] = exportAssets
+	for _, asset := range assetCollector.assets {
+		data.Assets = append(data.Assets, cloudBackupExportAssetMetadata{
+			ID: asset.ID, Path: asset.Path, MimeType: asset.MimeType, SizeBytes: asset.SizeBytes,
+		})
 	}
-	payload := map[string]interface{}{
-		"kind":          "renewlet-export",
-		"schemaVersion": renewletExportSchemaVersion,
-		"exportedAt":    exportedAt.Format(time.RFC3339Nano),
-		"data":          data,
+	payload := cloudBackupExportPayload{
+		Kind: "renewlet-export", SchemaVersion: renewletExportSchemaVersion,
+		ExportedAt: exportedAt.Format(time.RFC3339Nano), Data: data,
 	}
 	manifest := cloudBackupExportManifest{
 		Kind:          "renewlet-export",
@@ -218,19 +204,7 @@ func buildCloudBackupExportBundle(app core.App, user *core.Record, exportedAt ti
 	return cloudBackupExportBundle{Payload: payload, Assets: assetCollector.assets, Manifest: manifest}, nil
 }
 
-func subscriptionDetailResponseMap(subscription subscriptionDetailResponse) (map[string]interface{}, error) {
-	data, err := json.Marshal(subscription)
-	if err != nil {
-		return nil, err
-	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func cloudBackupExportSettings(app core.App, user *core.Record) (map[string]interface{}, bool, error) {
+func cloudBackupExportSettings(app core.App, user *core.Record) (*cloudBackupExportSettingsDTO, bool, error) {
 	record, err := app.FindFirstRecordByFilter("settings", "user = {:user}", dbx.Params{"user": user.Id})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -242,39 +216,10 @@ func cloudBackupExportSettings(app core.App, user *core.Record) (map[string]inte
 	if err != nil {
 		return nil, false, err
 	}
-	data, err := json.Marshal(settings)
-	if err != nil {
-		return nil, false, err
-	}
-	var out map[string]interface{}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, false, err
-	}
-	// 普通云快照永远剔除通知、AI、Webhook 等 secret；新增外部渠道字段必须进入这组边界。
-	for _, key := range []string{
-		"testPhone", "telegramBotToken", "telegramChatId", "notifyxApiKey", "webhookUrl", "webhookHeaders", "webhookPayload",
-		"dingtalkWebhookUrl", "dingtalkSecret", "dingtalkKeyword", "dingtalkTitleTemplate", "dingtalkContentTemplate",
-		"wechatWebhookUrl", "wechatAtPhones", "smtpHost", "smtpPort", "smtpSecure", "smtpUser", "smtpPassword",
-		"smtpFrom", "smtpReplyTo", "recipientEmail", "barkServerUrl", "barkDeviceKey", "serverchanSendKey",
-		"discordWebhookUrl", "discordBotUsername", "discordBotAvatarUrl", "pushplusToken",
-	} {
-		delete(out, key)
-	}
-	if ai, ok := out["aiRecognition"].(map[string]interface{}); ok {
-		ai["baseUrl"] = ""
-		ai["apiKey"] = ""
-	}
-	// Go 无法复用 shared Zod helper，必须镜像同一 v1 投影：auto 省略，明确偏好才写入旧 locale。
-	// 缺失 locale 的导入会保留目标账号偏好，不能在导出端把 auto 固化为某个实际语言。
-	localePreference, _ := out["localePreference"].(string)
-	delete(out, "localePreference")
-	if localePreference == string(localeZhCN) || localePreference == string(localeEnUS) {
-		out["locale"] = localePreference
-	}
-	return out, true, nil
+	return projectCloudBackupExportSettings(settings), true, nil
 }
 
-func cloudBackupExportCustomConfig(app core.App, user *core.Record, assetCollector *cloudBackupExportAssetCollector) (interface{}, bool, error) {
+func cloudBackupExportCustomConfig(app core.App, user *core.Record, assetCollector *cloudBackupExportAssetCollector) (*customConfigPayload, bool, error) {
 	record, err := app.FindFirstRecordByFilter("custom_configs", "user = {:user}", dbx.Params{"user": user.Id})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -303,15 +248,7 @@ func cloudBackupExportCustomConfig(app core.App, user *core.Record, assetCollect
 			}
 		}
 	}
-	outData, err := json.Marshal(config)
-	if err != nil {
-		return nil, false, err
-	}
-	var out interface{}
-	if err := json.Unmarshal(outData, &out); err != nil {
-		return nil, false, err
-	}
-	return out, true, nil
+	return &config, true, nil
 }
 
 func readCloudBackupAsset(app core.App, userID string, assetID string) (cloudBackupExportAsset, error) {

@@ -1,11 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CloudBackupSection } from "./cloud-backup-section";
-import type { CloudBackupController, CloudBackupFormState } from "../application/use-cloud-backup-controller";
-import type { CloudBackupConfig, CloudBackupPolicy, CloudBackupSnapshot } from "@/lib/api/schemas/cloud-backup";
-import type { SettingsReadState } from "../application/settings-read-state";
+import {
+  createController,
+  installPointerCaptureMocks,
+  readState,
+  snapshotFixture,
+  StatefulSection,
+  StatefulSnapshotSection,
+} from "./cloud-backup-section.test-utils";
+import type { CloudBackupConfig } from "@/lib/api/schemas/cloud-backup";
 vi.mock("@/i18n/I18nProvider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string | number>) => {
@@ -35,6 +40,12 @@ vi.mock("@/i18n/I18nProvider", () => ({
         "settings.cloudBackupCredential": "密钥",
         "settings.cloudBackupLastStatus": "上次状态",
         "settings.cloudBackupLastBackupAt": "上次备份",
+        "settings.cloudBackupLastError": "最近一次备份失败。",
+        "settings.cloudBackupRequestLimitPaused": "WebDAV 请求超限，定时备份已暂停。修正配置后重新开启并保存。",
+        "settings.cloudBackupTestFailed": "连接测试失败",
+        "settings.cloudBackupCreateFailed": "云端快照创建失败",
+        "settings.cloudBackupRestoreFailed": "云端快照恢复失败",
+        "settings.cloudBackupDeleteFailed": "云端快照删除失败",
         "settings.cloudBackupNeverBackedUp": "从未备份",
         "settings.cloudBackupConnection": "连接配置",
         "settings.cloudBackupPolicy": "备份策略",
@@ -49,6 +60,12 @@ vi.mock("@/i18n/I18nProvider", () => ({
         "settings.cloudBackupS3RegionHelp": "必填；按存储服务商 S3 API 文档填写 signing region，R2/Tigris 通常为 auto。",
         "settings.cloudBackupS3Bucket": "Bucket",
         "settings.cloudBackupS3Prefix": "Prefix",
+        "settings.cloudBackupS3PrefixHelp": "可留空，留空时直接使用 Bucket 根目录；建议使用专用 Bucket。只填写目录前缀，不要包含 .. 或文件名。",
+        "settings.cloudBackupS3AddressingStyle": "寻址模式",
+        "settings.cloudBackupS3AddressingStyleHelp": "默认使用 SDK 自动解析；自定义 Endpoint 无法使用虚拟主机时请选择 Path-style。",
+        "settings.cloudBackupS3AddressingStyleAuto": "Auto",
+        "settings.cloudBackupS3AddressingStylePath": "Path-style",
+        "settings.cloudBackupS3AddressingStyleVirtual": "Virtual-hosted",
         "settings.cloudBackupS3AccessKey": "Access Key",
         "settings.cloudBackupS3Secret": "Secret Key",
         "settings.cloudBackupPathHelp": "只填写目录前缀，不要包含 .. 或文件名。",
@@ -104,292 +121,25 @@ vi.mock("@/i18n/I18nProvider", () => ({
     formatDateTime: () => "2026-06-09 08:00",
   }),
 }));
-function installPointerCaptureMocks() {
-  Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", {
-    configurable: true,
-    value: vi.fn(() => false),
-  });
-  Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
-    configurable: true,
-    value: vi.fn(),
-  });
-  Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", {
-    configurable: true,
-    value: vi.fn(),
-  });
-}
-
-const defaultForm: CloudBackupFormState = {
-  provider: "webdav",
-  webdavUrl: "https://dav.example.com/remote.php/dav/files/alice",
-  webdavUsername: "alice",
-  webdavPassword: "",
-  webdavPath: "renewlet",
-  s3Endpoint: "https://account.r2.cloudflarestorage.com",
-  s3Region: "auto",
-  s3Bucket: "renewlet",
-  s3Prefix: "renewlet",
-  s3AccessKeyId: "access",
-  s3SecretAccessKey: "",
-  scheduleEnabled: false,
-  scheduleFrequency: "daily",
-  scheduleTime: "03:00",
-  scheduleWeekday: "monday",
-  retention: "7",
-};
-
-const defaultPolicy: CloudBackupPolicy = {
-  scheduleEnabled: false,
-  scheduleFrequency: "daily" as const,
-  scheduleTime: "03:00",
-  scheduleWeekday: "monday" as const,
-  retention: 7,
-};
-
-const s3Policy: CloudBackupPolicy = {
-  scheduleEnabled: true,
-  scheduleFrequency: "weekly" as const,
-  scheduleTime: "04:30",
-  scheduleWeekday: "friday" as const,
-  retention: 9,
-};
-
-const defaultStatus = {
-  lastBackupAt: null,
-  lastStatus: "idle" as const,
-  lastError: null,
-  updatedAt: "2026-06-09T00:00:00.000Z",
-};
-
-const webdavStatus = {
-  lastBackupAt: "2026-06-09T11:56:00.000Z",
-  lastStatus: "success" as const,
-  lastError: null,
-  updatedAt: "2026-06-09T11:56:00.000Z",
-};
-
-const s3Status = {
-  lastBackupAt: null,
-  lastStatus: "failed" as const,
-  lastError: "S3 权限不足",
-  updatedAt: "2026-06-09T12:00:00.000Z",
-};
-
-function readState<T>(data: T | undefined, overrides: Partial<SettingsReadState<T>> = {}): SettingsReadState<T> {
-  return {
-    data,
-    hasData: data !== undefined,
-    error: null,
-    isInitialLoading: false,
-    isRefreshing: false,
-    retry: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
-
-function defaultConfigData(): CloudBackupConfig {
-  return {
-    provider: defaultForm.provider,
-    credentialSet: true,
-    credentialSetByProvider: { webdav: true, s3: false },
-    policyByProvider: { webdav: defaultPolicy, s3: defaultPolicy },
-    statusByProvider: { webdav: defaultStatus, s3: defaultStatus },
-    updatedAt: "2026-06-09T00:00:00.000Z",
-  };
-}
-
-function createController(overrides: Partial<CloudBackupController> = {}): CloudBackupController {
-  return {
-    config: readState(defaultConfigData()),
-    snapshots: readState([]),
-    isInitialLayoutReady: true,
-    form: defaultForm,
-    credentialSet: true,
-    canCreateSnapshot: true,
-    isSaving: false,
-    isTesting: false,
-    isCreating: false,
-    isDownloading: false,
-    isDeleting: false,
-    restoringSnapshotKey: null,
-    deletingSnapshotKey: null,
-    hasUnsavedChanges: false,
-    snapshotsErrorMessage: null,
-    cloudBackupErrorDetails: null,
-    cloudBackupErrorDetailsOpen: false,
-    setCloudBackupErrorDetailsOpen: vi.fn(),
-    openSnapshotsErrorDetails: vi.fn(),
-    updateForm: vi.fn(),
-    saveConfig: vi.fn(async () => undefined),
-    testConfig: vi.fn(async () => undefined),
-    createSnapshot: vi.fn(async () => undefined),
-    restoreSnapshot: vi.fn(async () => undefined),
-    deleteSnapshot: vi.fn(async () => undefined),
-    ...overrides,
-  };
-}
-type TestDraftByProvider = Record<CloudBackupFormState["provider"], CloudBackupFormState>;
-
-function createTestDraft(provider: CloudBackupFormState["provider"], policy: CloudBackupPolicy = defaultPolicy): CloudBackupFormState {
-  return {
-    ...defaultForm,
-    provider,
-    scheduleEnabled: policy.scheduleEnabled,
-    scheduleFrequency: policy.scheduleFrequency,
-    scheduleTime: policy.scheduleTime,
-    scheduleWeekday: policy.scheduleWeekday,
-    retention: String(policy.retention),
-  };
-}
-
-function formFromTestDrafts(provider: CloudBackupFormState["provider"], drafts: TestDraftByProvider): CloudBackupFormState {
-  const activeDraft = drafts[provider];
-  return {
-    ...activeDraft,
-    provider,
-    webdavUrl: drafts.webdav.webdavUrl,
-    webdavUsername: drafts.webdav.webdavUsername,
-    webdavPassword: drafts.webdav.webdavPassword,
-    webdavPath: drafts.webdav.webdavPath,
-    s3Endpoint: drafts.s3.s3Endpoint,
-    s3Region: drafts.s3.s3Region,
-    s3Bucket: drafts.s3.s3Bucket,
-    s3Prefix: drafts.s3.s3Prefix,
-    s3AccessKeyId: drafts.s3.s3AccessKeyId,
-    s3SecretAccessKey: drafts.s3.s3SecretAccessKey,
-  };
-}
-
-function updateTestDraft(
-  drafts: TestDraftByProvider,
-  activeProvider: CloudBackupFormState["provider"],
-  key: keyof CloudBackupFormState,
-  value: CloudBackupFormState[keyof CloudBackupFormState],
-): TestDraftByProvider {
-  switch (key) {
-    case "webdavUrl":
-    case "webdavUsername":
-    case "webdavPassword":
-    case "webdavPath":
-      return { ...drafts, webdav: { ...drafts.webdav, [key]: value as string } };
-    case "s3Endpoint":
-    case "s3Region":
-    case "s3Bucket":
-    case "s3Prefix":
-    case "s3AccessKeyId":
-    case "s3SecretAccessKey":
-      return { ...drafts, s3: { ...drafts.s3, [key]: value as string } };
-    case "scheduleEnabled":
-    case "scheduleFrequency":
-    case "scheduleTime":
-    case "scheduleWeekday":
-    case "retention":
-      return { ...drafts, [activeProvider]: { ...drafts[activeProvider], [key]: value } };
-    default:
-      return drafts;
-  }
-}
-
-function snapshotFixture(patch: Partial<CloudBackupSnapshot> = {}): CloudBackupSnapshot {
-  return {
-    id: "snapshot-id",
-    filename: "renewlet.zip",
-    provider: "webdav",
-    createdAt: "2026-06-09T08:00:00.000Z",
-    sizeBytes: 1946,
-    sha256: "a".repeat(64),
-    ...patch,
-  };
-}
-
-function StatefulSection({ credentialSet = true }: { credentialSet?: boolean }) {
-  const [provider, setProvider] = useState<CloudBackupFormState["provider"]>(defaultForm.provider);
-  const [drafts, setDrafts] = useState<TestDraftByProvider>({
-    webdav: createTestDraft("webdav", defaultPolicy),
-    s3: createTestDraft("s3", s3Policy),
-  });
-  const credentialSetByProvider = { webdav: credentialSet, s3: false };
-  const form = formFromTestDrafts(provider, drafts);
-  const providerCredentialSet = credentialSetByProvider[provider];
-  const controller = createController({
-    form,
-    credentialSet: providerCredentialSet,
-    canCreateSnapshot: providerCredentialSet,
-    config: readState({
-      ...defaultConfigData(),
-      credentialSet: providerCredentialSet,
-      credentialSetByProvider,
-      policyByProvider: { webdav: defaultPolicy, s3: s3Policy },
-      statusByProvider: { webdav: webdavStatus, s3: s3Status },
-      provider,
-    }),
-    updateForm: (key, value) => {
-      if (key === "provider") {
-        setProvider(value as CloudBackupFormState["provider"]);
-        return;
-      }
-      setDrafts((previous) => updateTestDraft(previous, provider, key, value));
-    },
-  });
-  return <CloudBackupSection controller={controller} />;
-}
-
-function StatefulSnapshotSection({
-  snapshots,
-  restoreSnapshot,
-  deleteSnapshot,
-  isDownloading = false,
-  isDeleting = false,
-  restoringSnapshotKey = null,
-  deletingSnapshotKey = null,
-}: {
-  snapshots: CloudBackupSnapshot[];
-  restoreSnapshot: (snapshot: CloudBackupSnapshot) => Promise<void>;
-  deleteSnapshot: (snapshot: CloudBackupSnapshot) => Promise<void>;
-  isDownloading?: boolean;
-  isDeleting?: boolean;
-  restoringSnapshotKey?: string | null;
-  deletingSnapshotKey?: string | null;
-}) {
-  const [provider, setProvider] = useState<CloudBackupFormState["provider"]>(defaultForm.provider);
-  const [drafts, setDrafts] = useState<TestDraftByProvider>({
-    webdav: createTestDraft("webdav", defaultPolicy),
-    s3: createTestDraft("s3", s3Policy),
-  });
-  const credentialSetByProvider = { webdav: true, s3: true };
-  const form = formFromTestDrafts(provider, drafts);
-  const credentialSet = credentialSetByProvider[provider];
-  const controller = createController({
-    form,
-    credentialSet,
-    canCreateSnapshot: true,
-    config: readState({
-      ...defaultConfigData(),
-      credentialSet,
-      credentialSetByProvider,
-      provider,
-    }),
-    snapshots: readState(snapshots.filter((snapshot) => snapshot.provider === provider)),
-    isDownloading,
-    isDeleting,
-    restoringSnapshotKey,
-    deletingSnapshotKey,
-    restoreSnapshot,
-    deleteSnapshot,
-    updateForm: (key, value) => {
-      if (key === "provider") {
-        setProvider(value as CloudBackupFormState["provider"]);
-        return;
-      }
-      setDrafts((previous) => updateTestDraft(previous, provider, key, value));
-    },
-  });
-  return <CloudBackupSection controller={controller} />;
-}
-
 describe("CloudBackupSection", () => {
   beforeEach(() => {
     installPointerCaptureMocks();
+  });
+
+  it("explains a paused request limit using saved provider state, without confusing an unsaved toggle or S3", () => {
+    const controller = createController();
+    const config = controller.config.data;
+    if (!config) throw new Error("Missing fixture config");
+    config.statusByProvider.webdav = { ...config.statusByProvider.webdav, lastStatus: "failed", lastError: "CLOUD_BACKUP_WEBDAV_REQUEST_LIMIT" };
+    controller.form = { ...controller.form, scheduleEnabled: true };
+    const { rerender } = render(<CloudBackupSection controller={controller} />);
+    expect(screen.getByText("WebDAV 请求超限，定时备份已暂停。修正配置后重新开启并保存。")).toBeInTheDocument();
+    rerender(<CloudBackupSection controller={{ ...controller, form: { ...controller.form, provider: "s3" } }} />);
+    expect(screen.queryByText(/WebDAV 请求超限/)).not.toBeInTheDocument();
+    config.policyByProvider.webdav = { ...config.policyByProvider.webdav, scheduleEnabled: true };
+    rerender(<CloudBackupSection controller={controller} />);
+    expect(screen.queryByText(/WebDAV 请求超限/)).not.toBeInTheDocument();
+    expect(screen.getByText("最近一次备份失败。")).toBeInTheDocument();
   });
 
   it("does not render empty default configuration when the first config read fails", async () => {
@@ -435,7 +185,9 @@ describe("CloudBackupSection", () => {
     expect(screen.getAllByText("上次失败")).toHaveLength(1);
     expect(screen.getAllByText("未保存密钥")).toHaveLength(1);
     expect(screen.getByText("从未备份")).toBeInTheDocument();
-    expect(screen.getByText("S3 权限不足")).toBeInTheDocument();
+    expect(screen.getByText("最近一次备份失败。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看错误详情" })).not.toBeInTheDocument();
+    expect(screen.queryByText("S3 权限不足")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /执行时间/ })).toHaveTextContent("04:30");
     expect(screen.getByRole("button", { name: /执行时间/ })).toBeEnabled();
     const retentionInput = screen.getByLabelText("保留数量") as HTMLInputElement;
@@ -457,7 +209,7 @@ describe("CloudBackupSection", () => {
     expect(retentionInput.value).not.toMatch(/[.\-eE]/);
     const weekdayLabel = screen.getByText("星期", { selector: "label" });
     const scheduleTimeLabel = screen.getByText("执行时间", { selector: "label" });
-  expect(weekdayLabel.compareDocumentPosition(scheduleTimeLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(weekdayLabel.compareDocumentPosition(scheduleTimeLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await user.click(screen.getByRole("button", { name: /执行时间/ }));
     const hourColumn = await screen.findByRole("spinbutton", { name: "时" });
     const minuteColumn = await screen.findByRole("spinbutton", { name: "分" });
@@ -469,6 +221,69 @@ describe("CloudBackupSection", () => {
     expect(screen.getByRole("button", { name: /执行时间/ })).toHaveTextContent("23:30");
     await user.click(within(minuteColumn).getByText("59"));
     expect(screen.getByRole("button", { name: /执行时间/ })).toHaveTextContent("23:59");
+  });
+
+  it.each([
+    { action: "test", message: "连接测试失败" },
+    { action: "create", message: "云端快照创建失败" },
+    { action: "restore", message: "云端快照恢复失败" },
+    { action: "delete", message: "云端快照删除失败" },
+  ] as const)("labels $action failures by the initiating action and reopens their details", async ({ action, message }) => {
+    const user = userEvent.setup();
+    const setCloudBackupErrorDetailsOpen = vi.fn();
+    const cloudBackupErrorDetails = {
+      message: "Remote request failed",
+      responseText: "S3 PutObject failed: HTTP 403 Forbidden",
+      structured: null,
+    };
+    const controller = createController({
+      cloudBackupErrorDetails,
+      cloudBackupErrorDetailsContext: { scope: "action", action, provider: "webdav" },
+      setCloudBackupErrorDetailsOpen,
+    });
+
+    const { rerender } = render(<CloudBackupSection controller={controller} />);
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText("最近一次备份失败。")).not.toBeInTheDocument();
+    const detailsButton = screen.getByRole("button", { name: "查看错误详情" });
+    detailsButton.focus();
+    await user.keyboard("{Enter}");
+    expect(setCloudBackupErrorDetailsOpen).toHaveBeenCalledWith(true);
+
+    rerender(<CloudBackupSection controller={createController({
+      cloudBackupErrorDetails,
+      cloudBackupErrorDetailsContext: { scope: "action", action, provider: "webdav" },
+      cloudBackupErrorDetailsOpen: true,
+    })} />);
+    expect(screen.getByRole("dialog", { name: "云存储错误详情" })).toBeInTheDocument();
+    expect(screen.getByText("S3 PutObject failed: HTTP 403 Forbidden")).toBeInTheDocument();
+  });
+
+  it("does not expose action details after switching to another provider", () => {
+    render(<CloudBackupSection controller={createController({
+      cloudBackupErrorDetails: {
+        message: "云端快照创建失败",
+        responseText: "provider-specific failure",
+        structured: null,
+      },
+      cloudBackupErrorDetailsContext: { scope: "action", action: "test", provider: "s3" },
+    })} />);
+
+    expect(screen.queryByRole("button", { name: "查看错误详情" })).not.toBeInTheDocument();
+    expect(screen.queryByText("连接测试失败")).not.toBeInTheDocument();
+  });
+
+  it.each(["webdav", "s3"] as const)("only tests the connection when the %s test button is clicked", async (provider) => {
+    const user = userEvent.setup();
+    const controller = createController();
+    controller.form = { ...controller.form, provider };
+    render(<CloudBackupSection controller={controller} />);
+
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    expect(controller.testConfig).toHaveBeenCalledTimes(1);
+    expect(controller.saveConfig).not.toHaveBeenCalled();
+    expect(controller.createSnapshot).not.toHaveBeenCalled();
   });
 
   it("requires credentials before creating snapshots and routes restore through the controller", async () => {
@@ -766,6 +581,7 @@ describe("CloudBackupSection", () => {
     const cloudBackupErrorDetails = {
       message: "云端快照列表加载失败",
       responseText: "<Error><Code>AccessDenied</Code></Error>",
+      structured: null,
     };
     const staleSnapshots = readState([snapshotFixture({ filename: "renewlet-cached.zip" })], { error: new Error("云端快照列表加载失败") });
     const controller = createController({

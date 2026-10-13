@@ -88,6 +88,29 @@ describe("Cloudflare cost sharing collection notifications", () => {
     ]);
   });
 
+  it("keeps collection reminders for cancelled subscriptions while suppressing ordinary items", () => {
+    const items = collectNotificationItemsForLocalDate("2026-01-07", settings(), [
+      subscription({
+        status: "cancelled",
+        reminderDays: 3,
+        nextBillingDate: "2026-01-10",
+        costSharing: {
+          enabled: true,
+          splitMode: "equal",
+          collectionReminder: { enabled: true, reminderDays: 3 },
+          members: [{ id: "partner", name: "Partner", currency: "USD", joinedDate: dateOnly("2025-12-10") }],
+        },
+      }),
+    ]);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        type: "costSharing",
+        subscriptionId: "sub_family",
+      }),
+    ]);
+  });
+
   it("uses member custom amount and currency without exchange-rate guessing", () => {
     const items = collectNotificationItemsForLocalDate("2026-01-05", settings(), [
       subscription({
@@ -177,6 +200,7 @@ describe("Cloudflare cost sharing collection notifications", () => {
 
     const query = queries[0];
     expect(query?.sql).toContain("UNION");
+    expect(query?.sql).toContain("status != 'cancelled'");
     expect(query?.sql).toContain("cost_sharing_collection_reminder_enabled = 1");
     expect(query?.sql).toContain("cost_sharing_next_collection_reminder_date <= ?");
     expect(query?.sql).not.toMatch(/json_extract|json_valid|\$\.collectionReminder/);

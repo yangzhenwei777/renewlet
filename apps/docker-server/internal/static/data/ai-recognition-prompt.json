@@ -25,7 +25,7 @@
     "name is required and should be the service, product, or vendor name from the input.",
     "price must be a number when possible. Convert values like 15元, ¥15, 15 RMB, $9.99 into numeric price and ISO currency.",
     "Use the default currency hint only when the input has a clear price but no currency signal. If the amount itself is uncertain or unreadable, set both price and currency to null.",
-    "Generated user-facing metadata must follow User locale: use English for en-US and Simplified Chinese for zh-CN. This applies to suggested notes.value, newly generated categories, newly generated tags, and newly generated payment methods.",
+    "Generated user-facing metadata must follow User locale: use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU. This applies to suggested notes.value, newly generated categories, newly generated tags, and newly generated payment methods.",
     "Do not translate source=input text, Existing user tags, or provided category/payment method values; reuse those exact values when they fit.",
     "billingCycle must be one of weekly, monthly, quarterly, semi-annual, annual, custom, one-time, or null.",
     "Map 1个月, 每月, 月付, monthly to monthly; 1年, 年付, annual to annual; 季度 to quarterly; 半年 to semi-annual; 周付 to weekly; 买断, 终身, lifetime to one-time.",

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -33,13 +34,14 @@ func TestCloudBackupExportSettingsStripsExternalNotificationSecrets(t *testing.T
 		t.Fatal(err)
 	}
 
-	exported, ok, err := cloudBackupExportSettings(app, user)
+	exportedSettings, ok, err := cloudBackupExportSettings(app, user)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("expected settings to be exported")
 	}
+	exported := jsonObjectForTest(t, exportedSettings)
 	for _, key := range []string{"discordWebhookUrl", "discordBotUsername", "discordBotAvatarUrl", "pushplusToken", "dingtalkWebhookUrl", "dingtalkSecret", "dingtalkKeyword", "dingtalkTitleTemplate", "dingtalkContentTemplate"} {
 		if _, exists := exported[key]; exists {
 			t.Fatalf("expected %s to be stripped from cloud backup settings: %#v", key, exported)
@@ -60,6 +62,7 @@ func TestCloudBackupExportSettingsMapsLocalePreferenceToV1(t *testing.T) {
 		{preference: string(autoLocalePreference)},
 		{preference: string(preferenceZhCN), wantLocale: string(preferenceZhCN)},
 		{preference: string(preferenceEnUS), wantLocale: string(preferenceEnUS)},
+		{preference: string(preferenceRuRU), wantLocale: string(preferenceRuRU)},
 	} {
 		t.Run(test.preference, func(t *testing.T) {
 			app := newSchemaTestApp(t)
@@ -73,10 +76,11 @@ func TestCloudBackupExportSettingsMapsLocalePreferenceToV1(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			exported, ok, err := cloudBackupExportSettings(app, user)
+			exportedSettings, ok, err := cloudBackupExportSettings(app, user)
 			if err != nil || !ok {
 				t.Fatalf("expected settings export, ok=%v err=%v", ok, err)
 			}
+			exported := jsonObjectForTest(t, exportedSettings)
 			if _, exists := exported["localePreference"]; exists {
 				t.Fatalf("v1 export must not contain localePreference: %#v", exported)
 			}
@@ -313,5 +317,67 @@ func assertCloudBackupMissingAssetForTest(t *testing.T, value interface{}, asset
 	entry := value.(map[string]interface{})
 	if entry["assetId"] != assetID || entry["path"] != path || entry["reference"] != reference || entry["referenceId"] != referenceID || entry["reason"] != reason {
 		t.Fatalf("unexpected missing asset entry: %#v", entry)
+	}
+}
+
+func jsonObjectForTest(t *testing.T, value interface{}) map[string]interface{} {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var object map[string]interface{}
+	if err := json.Unmarshal(data, &object); err != nil {
+		t.Fatal(err)
+	}
+	return object
+}
+
+func TestCloudBackupExportTypedSettingsPreserveV1Projection(t *testing.T) {
+	settings := defaultAppSettings()
+	settings.MonthlyBudget = "123456789.012345"
+	settings.AIRecognition.BaseURL = "https://private.example.test"
+	settings.AIRecognition.APIKey = "private-api-key"
+	settings.LocalePreference = "ru-RU"
+	expected := jsonObjectForTest(t, settings)
+	for _, key := range strings.Fields(`testPhone telegramBotToken telegramChatId notifyxApiKey webhookUrl webhookHeaders webhookPayload dingtalkWebhookUrl dingtalkSecret dingtalkKeyword dingtalkTitleTemplate dingtalkContentTemplate wechatWebhookUrl wechatAtPhones smtpHost smtpPort smtpSecure smtpUser smtpPassword smtpFrom smtpReplyTo recipientEmail barkServerUrl barkDeviceKey serverchanSendKey discordWebhookUrl discordBotUsername discordBotAvatarUrl pushplusToken localePreference`) {
+		delete(expected, key)
+	}
+	expected["locale"] = "ru-RU"
+	ai := expected["aiRecognition"].(map[string]interface{})
+	ai["baseUrl"], ai["apiKey"] = "", ""
+	actual := jsonObjectForTest(t, projectCloudBackupExportSettings(settings))
+	if jsonStringForTest(actual) != jsonStringForTest(expected) {
+		t.Fatalf("v1 projection drift:\ngot %s\nwant %s", jsonStringForTest(actual), jsonStringForTest(expected))
+	}
+	if settings.AIRecognition.APIKey != "private-api-key" {
+		t.Fatal("projection changed source settings")
+	}
+}
+
+func TestCloudBackupExportTypedPayloadPreservesOmissionAndMoney(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user, _ := createRouteTestUser(t, app, "export-typed")
+	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"price": "123456789.012345"})
+	bundle, err := buildCloudBackupExportBundle(app, user, time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := jsonObjectForTest(t, bundle.Payload)
+	data := payload["data"].(map[string]interface{})
+	for _, key := range []string{"settings", "customConfig", "assets", "exchangeRateSnapshots"} {
+		if _, exists := data[key]; exists {
+			t.Fatalf("absent %s must stay omitted", key)
+		}
+	}
+	sub := data["subscriptions"].([]interface{})[0].(map[string]interface{})
+	if sub["price"] != "123456789.012345" {
+		t.Fatalf("money lost precision: %v", sub["price"])
+	}
+	if payload["schemaVersion"] != float64(1) || payload["kind"] != "renewlet-export" {
+		t.Fatalf("export contract changed: %v", payload)
 	}
 }

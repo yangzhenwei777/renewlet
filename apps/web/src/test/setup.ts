@@ -97,9 +97,12 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(rejectUnexpectedConsoleCall("error"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Radix FocusScope卸载后用零延时timer恢复焦点；必须在当前jsdom和断言环境仍存活时完成，不能丢弃或带入下一用例。
+  if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
   vi.useRealTimers();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.clearAllMocks();
   installStorage("localStorage");
   installStorage("sessionStorage");

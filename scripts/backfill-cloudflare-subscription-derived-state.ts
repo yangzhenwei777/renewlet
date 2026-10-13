@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { effectiveReminderDays } from "../packages/shared/src/runtime";
+import { effectiveReminderDays } from "@renewlet/shared/runtime";
 import { settingsFromRowJson, toApiSubscription } from "../apps/worker/src/db";
 import {
   normalizeSubscriptionTags,
@@ -14,6 +14,7 @@ import {
   dateOnlyInZone,
   getNextRepeatScheduleOccurrence,
   getRepeatScheduleDecision,
+  isCancelledSubscriptionStatus,
   localTimeInZone,
   repeatReminderOccurrenceMatches,
   repeatReminderSnapshot,
@@ -32,6 +33,7 @@ import {
   nextDailyNotificationDueAt,
 } from "./cloudflare-subscription-scheduler-backfill";
 import {
+  SUBSCRIPTION_DERIVED_BACKFILL_NAME,
   executeDerivedBackfillState,
 } from "./cloudflare-derived-backfill-state";
 import { probeDerivedBackfillState } from "./cloudflare-derived-schema";
@@ -39,7 +41,7 @@ import { probeDerivedBackfillState } from "./cloudflare-derived-schema";
 // 0039 先恢复 SQL 可表达的集合基线；本脚本复用 Worker 的 Unicode 投影与日期/时区规则收敛完整派生状态。
 // marker 只能在全量分页回填、逐字段投影校验、schedule 复算和 aggregate 不变量全部通过后写入。
 
-const backfillName = "subscription-derived-state-v3";
+const backfillName = SUBSCRIPTION_DERIVED_BACKFILL_NAME;
 const pageSize = 200;
 const writeBatchSize = 50;
 const notificationWindowMinutes = 2;
@@ -138,7 +140,7 @@ function parseArgs(argv: string[]): Options {
 }
 
 function nextRepeatDue(row: SubscriptionBackfillRow, now: Date): string | null {
-  if (row.repeat_reminder_enabled !== 1) return null;
+  if (row.repeat_reminder_enabled !== 1 || isCancelledSubscriptionStatus(row.status)) return null;
   const settings = settingsFromRowJson(row.settings_json);
   // 调度不依赖标签；旧事实里的空白/重复标签只影响可重建投影，不能阻断 repeat schedule 恢复。
   const subscription = toApiSubscription({
@@ -202,7 +204,7 @@ function storedRepeatScheduleMatches(row: SubscriptionScheduleVerificationRow, s
     ...row,
     tags_json: JSON.stringify(normalizeSubscriptionTags(row).map((tag) => tag.value)),
   });
-  if (!subscription.repeatReminderEnabled) return false;
+  if (!subscription.repeatReminderEnabled || isCancelledSubscriptionStatus(subscription.status)) return false;
   const reminderDays = effectiveReminderDays(subscription.reminderDays, settings.notificationReminderDays);
   if (reminderDays === undefined) return false;
   const occurrence = {
@@ -225,7 +227,7 @@ function storedRepeatScheduleMatches(row: SubscriptionScheduleVerificationRow, s
 }
 
 async function assertStoredSchedulesValid(client: D1Client, now: Date): Promise<void> {
-  // v3 完成后调度器可能已推进 schedule，也可能为失败重试保留逾期 occurrence；不能再拿新的 now 强求精确相等。
+  // v4 完成后调度器可能已推进 schedule，也可能为失败重试保留逾期 occurrence；不能再拿新的 now 强求精确相等。
   // 此处只验证存量时间仍是当前订阅与设置允许的 occurrence，并阻止仍有后续提醒的订阅缺失派生行。
   let cursorUserId = "";
   let cursorSubscriptionId = "";
@@ -325,7 +327,7 @@ async function assertDerivedInvariants(client: D1Client, expectedScheduleCount?:
     OR scheduler.auto_renew_count != (
       SELECT COUNT(*) FROM subscriptions WHERE user_id = scheduler.user_id AND auto_renew = 1
     ) OR scheduler.repeat_reminder_count != (
-      SELECT COUNT(*) FROM subscriptions WHERE user_id = scheduler.user_id AND repeat_reminder_enabled = 1
+      SELECT COUNT(*) FROM subscriptions WHERE user_id = scheduler.user_id AND repeat_reminder_enabled = 1 AND status != 'cancelled'
     ) OR COALESCE(scheduler.next_repeat_notification_due_at_utc, '') != COALESCE((
       SELECT next_due_at_utc FROM subscription_repeat_schedule
       WHERE user_id = scheduler.user_id ORDER BY next_due_at_utc, subscription_id LIMIT 1
@@ -375,7 +377,7 @@ async function upsertSchedulerRows(client: D1Client, now: Date): Promise<void> {
         settings.settings_json,
         COALESCE(scheduler.last_auto_renew_local_date, '') AS last_auto_renew_local_date,
         (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND auto_renew = 1) AS auto_renew_count,
-        (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND repeat_reminder_enabled = 1) AS repeat_reminder_count,
+        (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND repeat_reminder_enabled = 1 AND status != 'cancelled') AS repeat_reminder_count,
         (SELECT next_due_at_utc FROM subscription_repeat_schedule
          WHERE user_id = users.id ORDER BY next_due_at_utc, subscription_id LIMIT 1) AS next_repeat_notification_due_at_utc
       FROM users
@@ -431,26 +433,35 @@ async function upsertStatsRows(client: D1Client, now: Date): Promise<void> {
   const timestamp = toRfc3339Seconds(now);
   for (;;) {
     const users = await client.query(
-      "SELECT id AS name FROM users WHERE id > ? ORDER BY id LIMIT ?",
+      `SELECT id AS name
+       FROM users
+       WHERE id > ?
+       ORDER BY id
+       LIMIT ?`,
       [cursorUserId, pageSize],
       migrationRowSchema.parse,
     );
     if (users.length === 0) return;
-    await writeStatements(client, users.map((user): D1Statement => ({
+    const lastUser = requireLast(users, "Subscription stats backfill").name;
+    // 每页只执行一次聚合写入，避免为每个用户重复扫描 subscriptions；游标仍冻结在同一批用户范围内。
+    await client.batch([{
       sql: `INSERT INTO subscription_user_stats (
               user_id, total_count, trial_count, active_count, expired_count, paused_count, cancelled_count,
               created_at, updated_at
             )
             SELECT
               users.id,
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id),
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND status = 'trial'),
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND status = 'active'),
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND status = 'expired'),
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND status = 'paused'),
-              (SELECT COUNT(*) FROM subscriptions WHERE user_id = users.id AND status = 'cancelled'),
+              COUNT(subscriptions.id),
+              COALESCE(SUM(CASE WHEN subscriptions.status = 'trial' THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN subscriptions.status = 'active' THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN subscriptions.status = 'expired' THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN subscriptions.status = 'paused' THEN 1 ELSE 0 END), 0),
+              COALESCE(SUM(CASE WHEN subscriptions.status = 'cancelled' THEN 1 ELSE 0 END), 0),
               ?, ?
-            FROM users WHERE users.id = ?
+            FROM users
+            LEFT JOIN subscriptions ON subscriptions.user_id = users.id
+            WHERE users.id > ? AND users.id <= ?
+            GROUP BY users.id
             ON CONFLICT(user_id) DO UPDATE SET
               total_count = excluded.total_count,
               trial_count = excluded.trial_count,
@@ -459,9 +470,9 @@ async function upsertStatsRows(client: D1Client, now: Date): Promise<void> {
               paused_count = excluded.paused_count,
               cancelled_count = excluded.cancelled_count,
               updated_at = excluded.updated_at`,
-      params: [timestamp, timestamp, user.name],
-    })));
-    cursorUserId = requireLast(users, "Subscription stats backfill").name;
+      params: [timestamp, timestamp, cursorUserId, lastUser],
+    }]);
+    cursorUserId = lastUser;
     if (users.length < pageSize) return;
   }
 }
@@ -571,8 +582,8 @@ async function rebuildDerivedState(client: D1Client, now: Date): Promise<Derived
 }
 
 /**
- * 将 canonical v3 schema 收敛到 subscriptions 事实状态，并在全部不变量通过后最后写 marker。
- * mixed schema 在任何写入前阻断；已有 v3 marker 时只复验、不静默改写。所有重建写入均可在 D1 已提交但响应丢失后整轮重放。
+ * 将 canonical derived schema 收敛到 subscriptions 事实状态，并在全部不变量通过后最后写 v4 marker。
+ * v3 marker 只代表旧通知语义，不能跳过本次 cancelled 派生重建；所有重建写入均可在 D1 已提交但响应丢失后整轮重放。
  */
 export async function runBackfill(
   client: D1Client,
@@ -589,7 +600,7 @@ export async function runBackfill(
     },
     verify: async (): Promise<void> => {
       const verifiedProjections = await assertSubscriptionCollectionProjectionRows(client, pageSize);
-      if (state === "v3-complete") {
+      if (state === "v4-complete") {
         const verificationNow = now();
         await assertStoredSchedulesValid(client, verificationNow);
         await assertStoredSubscriptionSchedulerRowsValid(client, verificationNow, pageSize, notificationWindowMinutes);
@@ -622,7 +633,7 @@ export async function runBackfill(
     },
   });
 
-  if (state === "v3-complete") {
+  if (state === "v4-complete") {
     console.log("Cloudflare subscription derived-state backfill already complete; invariants passed.");
     return;
   }

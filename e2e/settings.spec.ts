@@ -28,7 +28,7 @@ test("desktop passkey fields and add action share stable form tracks", async ({ 
   await expectFormFieldRowAlignment(row, "desktop passkey registration", { action: true });
 });
 
-test("settings directory waits for deferred content before scrolling to calendar feed", async ({ page }) => {
+test("settings directory locates the skeleton before deferred content commits", async ({ page }) => {
   const advancedModule = await deferAdvancedSettingsModule(page);
   await gotoSettingsAfterHydration(page);
   const desktopNav = page.getByTestId("settings-section-nav-desktop");
@@ -41,7 +41,7 @@ test("settings directory waits for deferred content before scrolling to calendar
   await expect(page).toHaveURL(/#settings-calendar-feed$/);
   await expect(calendarLink).toHaveAttribute("aria-current", "location");
   await expect(calendarSection).toHaveAttribute("aria-busy", "true");
-  await expect(calendarSection).not.toBeInViewport();
+  await expect(calendarSection).toBeInViewport();
 
   advancedModule.release();
 
@@ -50,6 +50,26 @@ test("settings directory waits for deferred content before scrolling to calendar
   await expectSettingsSectionAtScrollAnchor(calendarSection);
   await expect(page).toHaveURL(/#settings-calendar-feed$/);
   await expect(calendarLink).toHaveAttribute("aria-current", "location");
+});
+
+test("settings hash restores through back navigation and refresh", async ({ page }) => {
+  await gotoSettingsAfterHydration(page);
+  const desktopNav = page.getByTestId("settings-section-nav-desktop");
+  const notificationsLink = desktopNav.getByRole("link", { name: "通知" });
+  await notificationsLink.click();
+  await expect(page).toHaveURL(/#settings-notifications$/);
+
+  await desktopNav.getByRole("link", { name: "时区" }).click();
+  await expect(page).toHaveURL(/#settings-timezone$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#settings-notifications$/);
+  await expect(notificationsLink).toHaveAttribute("aria-current", "location");
+
+  const settingsRead = page.waitForResponse((response) => response.request().method() === "GET" && response.status() === 200 && response.url().includes("/api/app/settings"));
+  await page.reload();
+  await settingsRead;
+  await expect(page).toHaveURL(/#settings-notifications$/);
+  await expect(page.locator("#settings-notifications")).toBeInViewport();
 });
 
 test("settings save, language switch, and floating layer layout stability", async ({ page }) => {
@@ -112,6 +132,10 @@ test("settings save, language switch, and floating layer layout stability", asyn
   await page.getByRole("option", { name: "English" }).click();
   await expect(page.getByRole("heading", { name: "System settings" })).toBeVisible();
   await page.getByRole("combobox", { name: "Language" }).click();
+  await page.getByRole("option", { name: "Русский" }).click();
+  await expect(page.getByRole("heading", { name: "Системные настройки" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru-RU");
+  await page.getByRole("combobox", { name: "Язык" }).click();
   await page.getByRole("option", { name: "中文" }).click();
   await expect(page.getByRole("heading", { name: "系统配置" })).toBeVisible();
 

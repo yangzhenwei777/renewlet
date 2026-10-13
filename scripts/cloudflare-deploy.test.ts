@@ -14,6 +14,7 @@ const exclusiveMigration = "0040_exclusive_settings_locale_preference.sql";
 interface OperationFixture {
   active?: string;
   applied?: boolean;
+  derivedBackfillPending?: boolean;
   failAt?: string | readonly string[];
   maintenanceVersion?: string;
   normalVersion?: string;
@@ -40,6 +41,7 @@ function operationsFixture(options: OperationFixture = {}): { events: string[]; 
         await event("read-migrations");
         return options.applied ? new Set([exclusiveMigration]) : new Set();
       },
+      async readPendingDerivedBackfill() { return options.derivedBackfillPending ?? false; },
       async captureBookmark() {
         await event("checkpoint");
         return "bookmark-1";
@@ -95,6 +97,21 @@ test("an already migrated database keeps the fast deployment path", async () => 
 
 test("a pending exclusive migration drains background executions before its first write", async () => {
   const fixture = operationsFixture({ active: "old" });
+
+  await runCloudflareDeployment(fixture.operations, [exclusiveMigration]);
+
+  assert.deepEqual(fixture.events.slice(6), [
+    "deploy-maintenance",
+    "drain",
+    "migrate",
+    "verify-db",
+    "deploy-normal",
+    "verify-db",
+  ]);
+});
+
+test("a pending v4 derived backfill drains background executions without a new exclusive migration", async () => {
+  const fixture = operationsFixture({ active: "old", applied: true, derivedBackfillPending: true });
 
   await runCloudflareDeployment(fixture.operations, [exclusiveMigration]);
 

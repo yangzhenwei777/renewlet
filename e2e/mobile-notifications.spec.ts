@@ -22,11 +22,24 @@ async function createNotificationHistoryRecords(page: Page) {
     return record.id;
   });
   // 私有快照只能通过后端事务生成；测试进程固定写隔离 E2E 库，不复制存储格式或新增产品写入口。
-  await promisify(execFile)("go", ["test", "./cmd/renewlet", "-run", "^TestNotificationHistoryBrowserFixture$", "-count=1"], {
-    cwd: resolve(__dirname, "../apps/docker-server"),
-    env: { ...process.env, RENEWLET_E2E_NOTIFICATION_USER: userId },
-    timeout: 60_000,
-  });
+  try {
+    await promisify(execFile)("go", ["test", "./cmd/renewlet", "-run", "^TestNotificationHistoryBrowserFixture$", "-count=1"], {
+      cwd: resolve(__dirname, "../apps/docker-server"),
+      env: { ...process.env, RENEWLET_E2E_NOTIFICATION_USER: userId },
+      timeout: 60_000,
+    });
+  } catch (error) {
+    // Playwright 默认只保留命令错误消息；子进程输出和退出原因才能区分夹具失败与编译超时。
+    if (error instanceof Error) {
+      for (const key of ["stdout", "stderr", "code", "signal", "killed"] as const) {
+        const value: unknown = Reflect.get(error, key);
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          await test.info().attach(`notification-fixture-${key}`, { body: String(value), contentType: "text/plain" });
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 test("mobile notification history opens selected details in a bounded bottom drawer", async ({ page }) => {

@@ -117,7 +117,7 @@ function sameScalarValues(actual: readonly unknown[], expected: readonly unknown
 
 /**
  * 用 Worker 同源规则从 subscriptions 重算 list/tag 投影，并以全局基数反向排除孤儿或额外派生行。
- * 该校验是 v3 marker 的前置条件，不能改成抽样或只核对行数。
+ * 该校验是 v4 marker 的前置条件，不能改成抽样或只核对行数。
  */
 export async function assertSubscriptionCollectionProjectionRows(
   client: D1Client,
@@ -193,10 +193,11 @@ export async function assertSubscriptionCollectionProjectionRows(
         tag_norm: tag.key,
         tag: tag.value,
         created_at: row.created_at,
-        updated_at: row.updated_at,
       }));
       if (actualTags.length !== expectedTagRows.length || actualTags.some((tag, index) => {
         const expected = expectedTagRows[index];
+        // publicHidden-only writes intentionally leave tag projection timestamps untouched; updated_at means
+        // the tag row last changed, not the enclosing subscription's last fact update.
         return expected === undefined || Object.entries(expected).some(([key, value]) => tag[key as keyof TagVerificationRow] !== value);
       })) {
         throw new Error("subscription_tags value invariant failed");

@@ -5,7 +5,7 @@ import {
   gotoSettingsAfterHydration,
 } from "./support/settings";
 
-test("mobile settings directory keeps calendar feed active across deferred content commit", async ({ page }) => {
+test("mobile settings directory locates the calendar skeleton before deferred commit", async ({ page }) => {
   const advancedModule = await deferAdvancedSettingsModule(page);
   await gotoSettingsAfterHydration(page);
   const drawerTrigger = page.getByRole("button", { name: "打开设置目录" });
@@ -17,7 +17,7 @@ test("mobile settings directory keeps calendar feed active across deferred conte
 
   await expect(drawer).toHaveCount(0);
   await expect(page).toHaveURL(/#settings-calendar-feed$/);
-  await expect(page.locator("#settings-calendar-feed")).not.toBeInViewport();
+  await expect(page.locator("#settings-calendar-feed")).toBeInViewport();
 
   advancedModule.release();
 

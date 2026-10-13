@@ -1,3 +1,4 @@
+import type { LocalePreference } from "@renewlet/shared/i18n-config";
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import { sha256 } from "./crypto";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, SESSION_COOKIE_NAME } from "./http";
@@ -34,7 +35,7 @@ export interface CalendarFeedTestOptions {
   calendarFeedsTableExists?: boolean;
   customConfigJson?: string | null;
   feeds?: CalendarFeedRow[];
-  localePreference?: "auto" | "zh-CN" | "en-US";
+  localePreference?: LocalePreference;
   subscriptions?: SubscriptionRow[];
 }
 

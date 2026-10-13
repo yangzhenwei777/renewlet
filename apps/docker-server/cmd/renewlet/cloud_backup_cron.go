@@ -77,7 +77,7 @@ func runDueCloudBackups(app core.App, now time.Time) error {
 			// 锁和状态都挂在 provider 行上；同一用户 WebDAV/S3 可分别到期，失败也只污染自己的 lastError。
 			client, err := cloudBackupRemoteClientForTarget(target)
 			if err != nil {
-				markCloudBackupStatus(app, userID, target.Provider, cloudBackupStatusFailed, err.Error())
+				markCloudBackupStatus(app, userID, target.Provider, cloudBackupStatusFailed, persistedCloudBackupErrorMessage(err))
 				continue
 			}
 			group := groups[userID]

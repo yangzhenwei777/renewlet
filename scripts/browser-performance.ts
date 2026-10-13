@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { arch, cpus, hostname, platform, release } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { buildSubscriptionPerformanceScenario } from "../packages/shared/src/contract-fixtures";
+import { buildSubscriptionPerformanceScenario } from "@renewlet/shared/contract-fixtures";
 import { performanceExchangeRateCache } from "../e2e/support/exchange-rate-fixture";
 
 export const performanceSampleCount = 10;
@@ -41,6 +41,45 @@ export const performanceSampleSchema = z.object({
 export type PerformanceSample = z.infer<typeof performanceSampleSchema>;
 export type PerformanceMetrics = z.infer<typeof metricsSchema>;
 
+export const labVitalsSnapshotSchema = z.object({
+  lcpMs: z.number().nonnegative().nullable(),
+  inpMs: z.number().nonnegative().nullable(),
+  cls: z.number().nonnegative().nullable(),
+  timeOrigin: z.number().positive(),
+  visibility: z.literal("hidden"),
+});
+export const labVitalsSampleSchema = z.object({
+  project: z.string(),
+  scenario: z.enum(performancePages),
+  cache: z.enum(["cold-document", "warm-document"]),
+  iteration: z.number().int().nonnegative(),
+  browser: z.string(),
+  viewport: z.object({ width: z.number(), height: z.number() }),
+  // 指标属于“打开页面 -> 一次导航 -> 隐藏文档”的完整旅程，不能当作 SPA 路由自己的 LCP/INP。
+  journey: z.literal("load-route;navigate-away;hide-document"),
+  vitals: labVitalsSnapshotSchema.nullable(),
+  resources: z.object({
+    rendererTaskCpuMs: z.number().nonnegative(),
+    jsHeapUsedBytes: z.number().nonnegative(),
+  }).nullable(),
+  errors: z.array(z.string()),
+});
+export type LabVitalsSample = z.infer<typeof labVitalsSampleSchema>;
+export type LabVitalsSnapshot = z.infer<typeof labVitalsSnapshotSchema>;
+
+const bundleSizeSchema = z.object({ gzip: z.number().nonnegative(), brotli: z.number().nonnegative() });
+export const performanceBuildSchema = z.object({
+  version: z.literal(1),
+  status: z.literal("passed"),
+  durationMs: z.number().nonnegative(),
+  artifactHash: z.string().min(1),
+  bundle: z.object({
+    budgets: z.object({ startup: bundleSizeSchema, route: bundleSizeSchema }),
+    startup: z.array(bundleSizeSchema.extend({ locale: z.string(), files: z.array(z.string()) })).min(1),
+    routes: z.array(bundleSizeSchema.extend({ key: z.string(), files: z.array(z.string()) })).min(1),
+  }),
+});
+
 export const performanceEnvironmentSchema = z.object({
   revision: z.string(), worktreeHash: z.string(), lockHash: z.string(),
   node: z.string(), packageManager: z.string(), go: z.string(), host: z.string(),
@@ -53,8 +92,10 @@ export const performanceEnvironmentSchema = z.object({
 export type PerformanceEnvironment = z.infer<typeof performanceEnvironmentSchema>;
 
 export const performanceReportSchema = z.object({
-  version: z.literal(6), environment: performanceEnvironmentSchema, artifactHash: z.string(),
+  version: z.literal(7), environment: performanceEnvironmentSchema, artifactHash: z.string(),
   status: z.string(), samples: z.array(performanceSampleSchema), failures: z.array(z.string()),
+  labVitals: z.array(labVitalsSampleSchema),
+  build: performanceBuildSchema.nullable(),
 });
 export type PerformanceReport = z.infer<typeof performanceReportSchema>;
 
@@ -157,12 +198,45 @@ export function summarizeReport(report: PerformanceReport) {
   return summaries;
 }
 
+export function summarizeLabVitals(report: PerformanceReport) {
+  if (report.status !== "passed" || report.failures.length > 0) throw new Error("Failed runs cannot become a vitals baseline");
+  const summaries: Record<string, Record<string, ReturnType<typeof summarize>>> = {};
+  for (const project of ["performance-desktop", "performance-mobile"]) {
+    for (const scenario of performancePages) {
+      for (const cache of ["cold-document", "warm-document"] as const) {
+        const key = `${project}/${scenario}/${cache}`;
+        const samples = report.labVitals.filter((sample) => `${sample.project}/${sample.scenario}/${sample.cache}` === key);
+        if (samples.length !== performanceSampleCount || new Set(samples.map((sample) => sample.iteration)).size !== performanceSampleCount) {
+          throw new Error(`Incomplete or duplicate vitals group: ${key}`);
+        }
+        const measurements = samples.map((sample) => {
+          if (sample.errors.length > 0 || !sample.vitals || !sample.resources) throw new Error(`Invalid vitals sample in ${key}`);
+          const { lcpMs, inpMs, cls } = sample.vitals;
+          // 无有效交互的 INP 缺失是事实；这里的旅程必含一次真实点击，缺失必须阻断基线，不能补零。
+          if (lcpMs === null || inpMs === null || cls === null) throw new Error(`Missing document vitals in ${key}`);
+          return { lcpMs, inpMs, cls, ...sample.resources };
+        });
+        const names = ["lcpMs", "inpMs", "cls", "rendererTaskCpuMs", "jsHeapUsedBytes"] as const;
+        summaries[key] = Object.fromEntries(names.map((name) => [name, summarize(measurements.map((value) => value[name]))]));
+      }
+    }
+  }
+  if (report.labVitals.length !== Object.keys(summaries).length * performanceSampleCount) throw new Error("Unexpected vitals samples");
+  return summaries;
+}
+
 export function comparePerformanceReports(baseline: PerformanceReport, candidate: PerformanceReport) {
+  for (const report of [baseline, candidate]) {
+    if (report.version !== 7) throw new Error("Performance protocol versions do not match");
+    if (!report.build || report.build.artifactHash !== report.artifactHash) throw new Error("Missing or mismatched performance build");
+  }
   const { revision: _baseRevision, worktreeHash: _baseTree, ...baseEnvironment } = baseline.environment;
   const { revision: _nextRevision, worktreeHash: _nextTree, ...nextEnvironment } = candidate.environment;
   if (JSON.stringify(baseEnvironment) !== JSON.stringify(nextEnvironment)) throw new Error("Performance environments do not match");
   const before = summarizeReport(baseline);
   const after = summarizeReport(candidate);
+  const vitalsBefore = summarizeLabVitals(baseline);
+  const vitalsAfter = summarizeLabVitals(candidate);
   const regressions: string[] = [];
   for (const [key, previous] of Object.entries(before)) {
     const current = after[key];
@@ -178,5 +252,11 @@ export function comparePerformanceReports(baseline: PerformanceReport, candidate
       if (currentValue > previousValue * 1.1) regressions.push(`${key} ${quantile}: ${previousValue} -> ${currentValue} ms`);
     }
   }
-  return { regressions, before, after };
+  for (const key of Object.keys(vitalsBefore)) {
+    const samples = [...baseline.labVitals, ...candidate.labVitals].filter((sample) => `${sample.project}/${sample.scenario}/${sample.cache}` === key);
+    if (new Set(samples.map((sample) => JSON.stringify([sample.browser, sample.viewport, sample.journey]))).size !== 1) {
+      throw new Error(`Vitals browser, viewport or journey differs in ${key}`);
+    }
+  }
+  return { regressions, before, after, labVitals: { before: vitalsBefore, after: vitalsAfter }, build: { before: baseline.build, after: candidate.build } };
 }

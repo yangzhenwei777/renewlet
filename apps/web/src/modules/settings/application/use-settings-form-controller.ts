@@ -141,12 +141,10 @@ export function useSettingsFormController(): SettingsFormController {
   const canRefreshBuiltInIconIndex = accountIdentity.role === "admin";
   const builtInIconIndex = useSettingsBuiltInIconIndexController(canRefreshBuiltInIconIndex);
   const authSecurity = useAuthSecuritySettingsController(canManageUsers, sensitiveAccountActionsDisabled);
-  const refetchNotificationHistory = useCallback(async () => {
-    await Promise.all([
-      notificationHistory.overview.retry(),
-      notificationHistory.history.retry(),
-    ]);
-  }, [notificationHistory.history, notificationHistory.overview]);
+  const refetchNotificationHistoryList = useCallback(async () => {
+    // overview 由 useUpdateSettings 成功后的统一失效负责；这里仅刷新历史分页，避免同一次保存重复请求概览。
+    await notificationHistory.history.retry();
+  }, [notificationHistory.history]);
   const hasInitializedFromRemoteRef = useRef(false);
   const hasResolvedDefaultRecipientEmailRef = useRef(false);
   const settingsDirtyRef = useRef(false);
@@ -396,7 +394,7 @@ export function useSettingsFormController(): SettingsFormController {
         setMonthlyBudgetInput(String(saved.monthlyBudget));
         setMonthlyBudgetError(null);
         syncSavedPreviewState(saved, { syncAppearance: appearanceChanged, rememberLocalePreference: localeChanged });
-        void refetchNotificationHistory();
+        void refetchNotificationHistoryList();
         // Bot 命令安装状态读取的是已保存凭据；保存 token/chat 后要主动刷新，不能等低频 query 自然过期。
         void refetchTelegramBotCommands();
         if (providerChanged) {
@@ -449,7 +447,7 @@ export function useSettingsFormController(): SettingsFormController {
     hasUnsavedChanges,
     isSavingSettings,
     monthlyBudgetError,
-    refetchNotificationHistory,
+    refetchNotificationHistoryList,
     refreshRates,
     saveConfig,
     savedSettings,

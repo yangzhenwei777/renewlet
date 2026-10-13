@@ -57,7 +57,7 @@ export function deploymentRecoveryCommand(
   options: DeploymentCheckpointOptions & { workerVersion: string },
 ): string {
   return [
-    "pnpm cloudflare:deploy:recover --",
+    "pnpm run cloudflare:deploy:recover",
     `--config ${shellQuote(options.configPath)}`,
     `--maintenance-config ${shellQuote(options.maintenanceConfigPath)}`,
     `--bookmark ${shellQuote(validateBookmark(bookmark))}`,

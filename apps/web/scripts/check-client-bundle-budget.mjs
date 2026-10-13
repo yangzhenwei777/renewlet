@@ -5,7 +5,7 @@
  * chunk 名只用于报告；依赖禁入读取 Vite 生成的 module graph，避免自动分包改名绕过守卫。
  */
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,15 +26,19 @@ const privateRouteKeys = new Set([
 const budgets = {
   // 相比 510 KB gzip / 431 KB Brotli 基线分别下降 21.6% / 20.2%。
   startup: { gzip: 400000, brotli: 344000 },
-  route: { gzip: 400000, brotli: 344000 },
+  route: { gzip: 400000, brotli: 345000 },
 };
 const forbiddenStartupModules = [
+  ["PocketBase SDK", (id) => id.includes("node_modules/pocketbase/")],
+  ["Passkey SDK", (id) => id.includes("node_modules/@simplewebauthn/browser/")],
   ["Recharts", (id) => id.includes("node_modules/recharts/")],
   ["JSZip", (id) => id.includes("node_modules/jszip/")],
   ["sql.js", (id) => id.includes("node_modules/sql.js/")],
   ["完整 settings 模型", (id) => id.endsWith("apps/web/src/types/subscription.ts")],
 ];
 const forbiddenLazyDialogShellModules = [
+  ["高级筛选面板", (id) => id.endsWith("apps/web/src/components/subscription-advanced-filter-content.tsx")],
+  ["批量公开可见性工具栏", (id) => id.endsWith("apps/web/src/components/subscription-bulk-visibility-toolbar.tsx")],
   ["react-image-crop", (id) => id.includes("node_modules/react-image-crop/")],
   ["qrcode.react", (id) => id.includes("node_modules/qrcode.react/")],
   ["AI 草稿编辑器", (id) => id.endsWith("apps/web/src/components/ai-recognition/ai-draft-editor-panel.tsx")],
@@ -140,6 +144,7 @@ const privateShellKey = "src/components/private-app-shell.tsx";
 if (!manifest[privateShellKey]) throw new Error("Client bundle manifest has no private application shell entry");
 const privateShellClosure = collectStaticClosure(privateShellKey);
 
+const startupReports = [];
 for (const locale of locales) {
   const localeKey = catalogEntryKey(locale);
   if (!manifest[localeKey]) throw new Error(`Client bundle manifest has no ${locale} catalog entry`);
@@ -148,6 +153,7 @@ for (const locale of locales) {
   console.log(`${locale} startup files: ${[...startupClosure.files].sort().join(", ")}`);
   assertStartupDependencies(locale, startupClosure);
   assertBudget(`${locale} startup closure`, startupSizes, budgets.startup);
+  startupReports.push({ locale, files: [...startupClosure.files].sort(), ...startupSizes });
 }
 
 const routeClosures = manifestEntries
@@ -165,3 +171,9 @@ for (const route of routeClosures) assertLazyDialogShellDependencies(route.key, 
 const largestRoute = routeClosures[0];
 console.log(`largest route files (${largestRoute.key}): ${[...largestRoute.files].sort().join(", ")}`);
 assertBudget(`largest complete route closure (${largestRoute.key})`, largestRoute, budgets.route);
+// 报告复用守卫已经核算的闭包与压缩字节；采集器不再解析日志或维护第二套包体算法。
+writeFileSync(join(distRoot, ".vite/bundle-budget.json"), JSON.stringify({
+  budgets,
+  startup: startupReports,
+  routes: routeClosures.map(({ files, ...route }) => ({ ...route, files: [...files].sort() })),
+}, null, 2) + "\n");

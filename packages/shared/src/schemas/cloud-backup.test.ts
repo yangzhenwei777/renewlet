@@ -1,7 +1,7 @@
 // 云备份 schema 测试保护 Docker/Worker/前端三端共用契约，尤其是 write-only 凭据和 ZIP 快照完整性边界。
 import { describe, expect, it } from "vitest";
 import {
-  CLOUD_BACKUP_RAW_RESPONSE_TEXT_MAX_CHARS,
+  CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS,
   cloudBackupCreateSnapshotRequestSchema,
   cloudBackupCreateSnapshotResponseSchema,
   cloudBackupConfigResponseSchema,
@@ -83,9 +83,40 @@ describe("cloud backup schemas", () => {
       },
       policy: cloudBackupPolicySchema.parse({}),
     }).success).toBe(false);
+
+    expect(cloudBackupConfigUpdateSchema.safeParse({
+      provider: "webdav",
+      webdav: {
+        url: "https://alice:secret@dav.example.com/remote.php/dav/files/alice",
+        path: "renewlet",
+      },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).success).toBe(false);
+
+    expect(cloudBackupConfigUpdateSchema.safeParse({
+      provider: "s3",
+      s3: {
+        endpoint: "https://access:secret@storage.example.com",
+        bucket: "renewlet",
+        region: "auto",
+        accessKeyId: "access",
+      },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).success).toBe(false);
+
+    expect(cloudBackupConfigUpdateSchema.safeParse({
+      provider: "s3",
+      s3: {
+        endpoint: "https://storage.example.com",
+        bucket: "renewlet/backups",
+        region: "auto",
+        accessKeyId: "access",
+      },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).success).toBe(false);
   });
 
-  it("strips deprecated S3 addressing style from old payloads", () => {
+  it("normalizes S3 addressing style at the shared boundary", () => {
     const parsed = cloudBackupConfigUpdateSchema.parse({
       provider: "s3",
       s3: {
@@ -99,16 +130,25 @@ describe("cloud backup schemas", () => {
       policy: cloudBackupPolicySchema.parse({}),
     });
 
-    expect(parsed.s3).toEqual({
-      endpoint: "https://cos.ap-guangzhou.myqcloud.com",
-      region: "ap-guangzhou",
-      bucket: "renewlet-1251530225",
-      prefix: "snapshots",
-      accessKeyId: "access",
-    });
+    expect(parsed.s3?.addressingStyle).toBe("pathStyle");
+    expect(cloudBackupConfigUpdateSchema.safeParse({
+      provider: "s3",
+      s3: { endpoint: "https://storage.example.com", region: "auto", bucket: "renewlet", prefix: "snapshots", addressingStyle: "virtual" },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).success).toBe(false);
+    expect(cloudBackupConfigUpdateSchema.parse({
+      provider: "s3",
+      s3: { endpoint: "https://storage.example.com", region: "auto", bucket: "renewlet", prefix: "snapshots" },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).s3?.addressingStyle).toBe("auto");
+    expect(cloudBackupConfigUpdateSchema.safeParse({
+      provider: "s3",
+      s3: { endpoint: "https://storage.example.com", region: "auto", bucket: "renewlet", addressingStyle: "invalid" },
+      policy: cloudBackupPolicySchema.parse({}),
+    }).success).toBe(false);
   });
 
-  it("normalizes empty remote prefixes to the same default as the Go runtime", () => {
+  it("keeps an explicit empty S3 prefix at the bucket root while preserving defaults", () => {
     const webdav = cloudBackupConfigUpdateSchema.parse({
       provider: "webdav",
       webdav: {
@@ -127,9 +167,33 @@ describe("cloud backup schemas", () => {
       },
       policy: cloudBackupPolicySchema.parse({}),
     });
+    const rootSlashS3 = cloudBackupConfigUpdateSchema.parse({
+      provider: "s3",
+      s3: {
+        endpoint: "https://storage.example.com",
+        bucket: "renewlet",
+        region: "auto",
+        prefix: "/",
+      },
+      policy: cloudBackupPolicySchema.parse({}),
+    });
 
     expect(webdav.webdav?.path).toBe("renewlet");
-    expect(s3.s3?.prefix).toBe("renewlet");
+    expect(s3.s3?.prefix).toBe("");
+    expect(rootSlashS3.s3?.prefix).toBe("");
+
+    const defaultS3 = cloudBackupConfigUpdateSchema.parse({
+      provider: "s3",
+      s3: {
+        endpoint: "https://storage.example.com",
+        bucket: "renewlet",
+        region: "auto",
+      },
+      policy: cloudBackupPolicySchema.parse({}),
+    });
+
+    expect(defaultS3.s3?.prefix).toBe("renewlet");
+    expect(defaultS3.s3?.addressingStyle).toBe("auto");
   });
 
   it("validates provider-level policy and create requests", () => {
@@ -208,7 +272,6 @@ describe("cloud backup schemas", () => {
           endpoint: "https://storage.example.com",
           region: "us-east-1",
           bucket: "renewlet",
-          prefix: "snapshots",
           accessKeyId: "access",
         },
         credentialSet: true,
@@ -233,7 +296,7 @@ describe("cloud backup schemas", () => {
         },
         updatedAt: null,
       },
-    })).data.config.s3?.bucket).toBe("renewlet");
+    })).data.config.s3?.prefix).toBe("renewlet");
 
     expect(cloudBackupConfigResponseSchema.safeParse(success({
       config: {
@@ -317,21 +380,50 @@ describe("cloud backup schemas", () => {
     }).success).toBe(false);
   });
 
-  it("validates raw upstream error details without accepting oversized bodies", () => {
+  it("validates structured remote error details without accepting oversized bodies", () => {
     const parsed = cloudBackupErrorDetailsSchema.parse({
-      rawResponseText: "<Error><Code>AccessDenied</Code></Error>",
+      provider: "s3",
+      operation: "ListObjectsV2",
+      target: "host=storage.example.com; bucket=renewlet; key=(bucket root)",
+      httpStatus: 403,
+      httpStatusText: "Forbidden",
+      providerCode: "AccessDenied",
+      providerMessage: "<Error><Code>AccessDenied</Code></Error>",
+      requiredCapability: "bucket listing permission",
     });
 
-    expect(parsed.rawResponseText).toContain("AccessDenied");
+    expect(parsed.providerMessage).toContain("AccessDenied");
 
     const local = cloudBackupErrorDetailsSchema.parse({
-      rawResponseText: "Value out of range. Must be between -2147483648 and 2147483647 (inclusive).",
+      operation: "manifest",
+      target: "bucket=renewlet; key=backup.manifest.json",
+      clientMessage: "Value out of range. Must be between -2147483648 and 2147483647 (inclusive).",
     });
 
-    expect(local.rawResponseText).toContain("Value out of range");
+    expect(local.clientMessage).toContain("Value out of range");
+    expect(local.providerMessage).toBeUndefined();
+
+    const parseFailure = cloudBackupErrorDetailsSchema.parse({
+      provider: "s3",
+      operation: "ListObjectsV2",
+      target: "bucket=renewlet",
+      httpStatus: 200,
+      providerMessage: "<ListBucketResult/>",
+      clientMessage: "ReferenceError: DOMParser is not defined",
+    });
+    expect(parseFailure.httpStatus).toBe(200);
+    expect(parseFailure.providerCode).toBeUndefined();
+    expect(parseFailure.clientMessage).toContain("DOMParser");
 
     expect(cloudBackupErrorDetailsSchema.safeParse({
-      rawResponseText: "x".repeat(CLOUD_BACKUP_RAW_RESPONSE_TEXT_MAX_CHARS + 1),
+      operation: "manifest",
+      target: "backup.manifest.json",
+      providerMessage: "x".repeat(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS + 1),
+    }).success).toBe(false);
+    expect(cloudBackupErrorDetailsSchema.safeParse({
+      operation: "ListObjectsV2",
+      target: "bucket=renewlet",
+      clientMessage: "x".repeat(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS + 1),
     }).success).toBe(false);
   });
 });
@@ -473,6 +565,17 @@ describe("renewlet export schema", () => {
 
     expect(exported).toEqual({ locale: localePreference, defaultCurrency: "USD" });
     expect(fromRenewletExportSettingsV1(exported)).toEqual({ localePreference, defaultCurrency: "USD" });
+  });
+
+  it("preserves the optional lunar display preference in v1 backups", () => {
+    const exported = toRenewletExportSettingsV1({
+      localePreference: "auto",
+      defaultCurrency: "USD",
+      showLunarCalendar: true,
+    });
+
+    expect(exported.showLunarCalendar).toBe(true);
+    expect(fromRenewletExportSettingsV1({ defaultCurrency: "CNY" })).toEqual({ defaultCurrency: "CNY" });
   });
 
   it("omits auto from v1 exports and leaves an absent v1 locale out of the import patch", () => {

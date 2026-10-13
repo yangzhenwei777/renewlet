@@ -3,6 +3,7 @@
  *
  * 这里对齐 Go 侧 notification_http.go：所有通知渠道外发都必须先经过统一超时、脱敏和 rawResponseText 处理。
  */
+import { CronBudgetExceeded, type CronBudget } from "./cron-budget";
 import type { AppLocale } from "./http";
 import { NotificationChannelError } from "./notification-errors";
 import { serverFormat } from "./server-i18n";
@@ -17,6 +18,7 @@ import {
 export const NOTIFICATION_HTTP_TIMEOUT_MS = 10_000;
 
 type NotificationRequestOptions = {
+  budget?: CronBudget;
   secrets?: readonly string[];
   timeoutMs?: number;
 };
@@ -47,10 +49,12 @@ export async function sendNotificationRequest(
   try {
     return await sendUpstreamRequest(url, init, {
       provider: service,
+      ...(options.budget ? { budget: options.budget } : {}),
       secrets: options.secrets ?? [],
       timeoutMs: options.timeoutMs ?? NOTIFICATION_HTTP_TIMEOUT_MS,
     });
   } catch (error) {
+    if (error instanceof CronBudgetExceeded) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new NotificationChannelError(
       serverFormat(locale, "notification.httpRequestFailed", { service, error: message }),

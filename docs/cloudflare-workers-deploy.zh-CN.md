@@ -243,7 +243,7 @@ https://<WORKER_NAME>.<workers-dev-subdomain>.workers.dev/setup
 pnpm exec wrangler d1 export DB --remote --config wrangler.generated.jsonc --output renewlet-before-upgrade.sql
 ```
 
-普通升级保持在线。检测到尚未应用的 `_exclusive_` 排他 migration 时，部署编排器会先用同一份 Worker bundle 部署维护配置，解绑 Cron 和 Queue consumer，并等待 Cloudflare 后台 invocation 的 15 分钟最长执行时间。API、ICS 和 webhook 返回带 `Retry-After: 900`、`Cache-Control: no-store` 的 `503`，Static Assets 仍继续提供 SPA。
+普通升级保持在线。检测到尚未应用的 `_exclusive_` 排他 migration，或 `subscription-derived-state-v4` marker 仍待回填时，部署编排器会先用同一份 Worker bundle 部署维护配置，解绑 Cron 和 Queue consumer，并等待 Cloudflare 后台 invocation 的 15 分钟最长执行时间。API、ICS 和 webhook 返回带 `Retry-After: 900`、`Cache-Control: no-store` 的 `503`，Static Assets 仍继续提供 SPA。
 
 ```bash
 pnpm deploy -- --config wrangler.generated.jsonc --maintenance-config wrangler.maintenance.generated.jsonc

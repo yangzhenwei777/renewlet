@@ -453,9 +453,9 @@ export async function listNotificationScheduleCandidateSubscriptions(
   // 三类日常候选分支各自走日期索引；UNION 后再由 collector 做 date-only 精确判断。
   const selects = [
     `SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
-      WHERE user_id = ? AND reminder_days != ? AND next_billing_date >= ? AND next_billing_date <= ?`,
+      WHERE user_id = ? AND status != 'cancelled' AND reminder_days != ? AND next_billing_date >= ? AND next_billing_date <= ?`,
     `SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
-      WHERE user_id = ? AND reminder_days != ? AND trial_end_date >= ? AND trial_end_date <= ?`,
+      WHERE user_id = ? AND status != 'cancelled' AND reminder_days != ? AND trial_end_date >= ? AND trial_end_date <= ?`,
   ];
   const params: unknown[] = [
     userId, DISABLED_REMINDER_DAYS, options.scheduledLocalDate, maxDate,
@@ -463,7 +463,7 @@ export async function listNotificationScheduleCandidateSubscriptions(
   ];
   if (options.includeExpired && options.showExpired) {
     selects.push(`SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
-      WHERE user_id = ? AND reminder_days != ? AND next_billing_date < ?`);
+      WHERE user_id = ? AND status != 'cancelled' AND reminder_days != ? AND next_billing_date < ?`);
     params.push(userId, DISABLED_REMINDER_DAYS, options.scheduledLocalDate);
   }
   selects.push(`SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
@@ -482,11 +482,11 @@ export async function listRepeatReminderCandidateSubscriptions(env: Env, userId:
   const maxDate = addDateOnlyDays(localDate, MAX_REMINDER_DAYS);
   const result = await env.DB.prepare(`
     SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
-      WHERE user_id = ? AND repeat_reminder_enabled = 1 AND reminder_days != ?
+      WHERE user_id = ? AND status != 'cancelled' AND repeat_reminder_enabled = 1 AND reminder_days != ?
         AND next_billing_date >= ? AND next_billing_date <= ?
     UNION
     SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
-      WHERE user_id = ? AND repeat_reminder_enabled = 1 AND reminder_days != ?
+      WHERE user_id = ? AND status != 'cancelled' AND repeat_reminder_enabled = 1 AND reminder_days != ?
         AND status = 'trial' AND trial_end_date >= ? AND trial_end_date <= ?
     ORDER BY created_at DESC, id DESC
   `).bind(
@@ -541,6 +541,18 @@ export function parsePublicSubscriptionCursor(value?: string): { createdAt: stri
 export async function getAsset(env: Env, userId: string, id: string): Promise<AssetRow | null> {
   // D1 metadata 是 R2 私有资产的权限索引；所有读取都必须带 userId 过滤。
   return await env.DB.prepare(`SELECT ${ASSET_COLUMNS} FROM assets WHERE user_id = ? AND id = ? LIMIT 1`).bind(userId, id).first<AssetRow>();
+}
+
+export type OwnedAssetMetadata = Pick<AssetRow, "id" | "r2_key" | "original_name" | "mime_type" | "size_bytes">;
+
+/** JSON1 集合参数避免资产数量突破 D1 绑定上限；owner 条件必须先于任何 R2 读取。 */
+export async function getOwnedAssetsByIds(env: Env, userId: string, ids: readonly string[]): Promise<OwnedAssetMetadata[]> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return [];
+  const result = await env.DB.prepare(`SELECT id, r2_key, original_name, mime_type, size_bytes FROM assets
+    WHERE user_id = ? AND id IN (SELECT value FROM json_each(?)) LIMIT ?`)
+    .bind(userId, JSON.stringify(uniqueIds), uniqueIds.length).all<OwnedAssetMetadata>();
+  return result.results;
 }
 
 /** listAssets 是 Logo/Icon 选择器的数据源；kind 和 userId 共同限制可见资产集合。 */

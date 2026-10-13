@@ -8,18 +8,15 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { formatter } from "@lingui/format-po";
 import { findFrontendI18nViolations } from "./frontend-i18n-guard.mjs";
+import { collectDescriptorCatalogs } from "../apps/web/scripts/extract-i18n.ts";
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const i18nConfig = JSON.parse(fs.readFileSync(path.join(rootDir, "packages/shared/data/i18n-config.json"), "utf8"));
 const clientDir = path.join(rootDir, "apps/web");
-const clientRequire = createRequire(path.join(clientDir, "package.json"));
-const { getConfig } = await import(clientRequire.resolve("@lingui/conf"));
-const { getCatalogs } = await import(clientRequire.resolve("@lingui/cli/api"));
 
 const catalogDir = path.join(clientDir, "src/i18n/catalogs");
 const descriptorDir = path.join(clientDir, "src/i18n/descriptors");
@@ -155,19 +152,9 @@ function compareMessageMap(failures, label, expected, actual) {
 }
 
 async function extractDescriptorCatalogs() {
-  const config = getConfig({ cwd: clientDir, configPath: path.join(clientDir, "lingui.config.ts") });
-  const catalogs = await getCatalogs(config);
-  const extracted = {};
-  for (const catalog of catalogs) {
-    const messages = await catalog.collect();
-    if (!messages) {
-      throw new Error(`Lingui failed to extract descriptor catalog ${catalog.name ?? catalog.path}`);
-    }
-    extracted[catalog.name ?? path.basename(catalog.path)] = Object.fromEntries(
-      Object.entries(messages).map(([key, entry]) => [key, entry.message ?? key]),
-    );
-  }
-  return extracted;
+  return Object.fromEntries(Object.entries(await collectDescriptorCatalogs()).map(([domain, messages]) => [
+    domain, Object.fromEntries(Object.entries(messages).map(([key, entry]) => [key, entry.message ?? key])),
+  ]));
 }
 
 function readServerI18nCatalog(locale) {

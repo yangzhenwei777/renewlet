@@ -214,6 +214,54 @@ func TestBuildDueNotificationSkipsDisabledReminderSubscription(t *testing.T) {
 	}
 }
 
+func TestBuildDueNotificationCancelledStopsOrdinaryButKeepsCostSharing(t *testing.T) {
+	settings := defaultAppSettings()
+	settings.Timezone = "UTC"
+	reminderDays := 3
+
+	message := buildDueNotificationForLocalDate("2026-05-14", time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC), settings, []notificationSubscription{
+		{
+			ID:              "cancelled-family",
+			Name:            "Cancelled Family Plan",
+			Price:           "30",
+			Currency:        "USD",
+			Status:          "cancelled",
+			BillingCycle:    "monthly",
+			NextBillingDate: "2026-05-17",
+			ReminderDays:    reminderDays,
+			CostSharing: costSharingPayload{
+				Enabled:   true,
+				SplitMode: "equal",
+				CollectionReminder: &costSharingCollectionReminder{
+					Enabled:      true,
+					ReminderDays: &reminderDays,
+				},
+				Members: []costSharingMember{{ID: "partner", Name: "Partner", JoinedDate: "2026-04-17", Currency: "USD"}},
+			},
+		},
+	}, true, accountContentLocale(settings))
+
+	if !message.HasPayload || len(message.Items) != 1 || message.Items[0].Type != "costSharing" {
+		t.Fatalf("cancelled subscription should keep only family collection reminder, got %#v", message.Items)
+	}
+}
+
+func TestBuildDueNotificationCancelledSkipsRenewalExpiryAndExpired(t *testing.T) {
+	settings := defaultAppSettings()
+	settings.Timezone = "UTC"
+	settings.ShowExpired = true
+
+	message := buildDueNotificationForLocalDate("2026-05-14", time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC), settings, []notificationSubscription{
+		{ID: "cancelled-renewal", Name: "Cancelled Renewal", Status: "cancelled", BillingCycle: "monthly", NextBillingDate: "2026-05-17", ReminderDays: 3},
+		{ID: "cancelled-expiry", Name: "Cancelled Expiry", Status: "cancelled", BillingCycle: "one-time", OneTimeTermCount: 6, OneTimeTermUnit: "month", NextBillingDate: "2026-05-17", ReminderDays: 3},
+		{ID: "cancelled-expired", Name: "Cancelled Expired", Status: "cancelled", BillingCycle: "monthly", NextBillingDate: "2026-05-01", ReminderDays: 7},
+	}, true, accountContentLocale(settings))
+
+	if message.HasPayload || len(message.Items) != 0 {
+		t.Fatalf("cancelled subscriptions should not produce ordinary items, got %#v", message.Items)
+	}
+}
+
 func TestRepeatReminderScheduleBuildsRepeatItem(t *testing.T) {
 	settings := defaultAppSettings()
 	settings.Timezone = "UTC"
@@ -410,6 +458,7 @@ func TestRepeatReminderCandidateSubscriptionsMatchFullFiltering(t *testing.T) {
 	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"name": "Repeat Trial", "status": "trial", "nextBillingDate": "2026-06-01", "trialEndDate": "2026-05-17", "reminderDays": 3, "repeatReminderEnabled": true, "repeatReminderInterval": "1h", "repeatReminderWindow": "72h"})
 	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"name": "Quiet Repeat", "nextBillingDate": "2026-05-17", "reminderDays": disabledReminderDays, "repeatReminderEnabled": true})
 	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"name": "One Time Repeat", "billingCycle": "one-time", "oneTimeTermCount": 6, "oneTimeTermUnit": "month", "nextBillingDate": "2026-05-17", "reminderDays": 3, "repeatReminderEnabled": true})
+	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"name": "Cancelled Repeat", "status": "cancelled", "nextBillingDate": "2026-05-17", "reminderDays": 3, "repeatReminderEnabled": true})
 	createRouteTestSubscription(t, app, user.Id, map[string]interface{}{"name": "Regular Only", "nextBillingDate": "2026-05-17", "reminderDays": 3, "repeatReminderEnabled": false})
 
 	full, err := listNotificationSubscriptions(app, user.Id)
@@ -528,8 +577,8 @@ func TestRepeatReminderCronCreatesOneIdempotentJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Skipped != 1 || second.Skipped != 1 || second.Results[0].Reason != "already_skipped" {
-		t.Fatalf("expected first skipped job then idempotent skip, got first=%#v second=%#v", first, second)
+	if first.Skipped != 1 || second.Processed != 0 {
+		t.Fatalf("expected one skipped job and no re-enumeration of its completed window, got first=%#v second=%#v", first, second)
 	}
 	jobs, err := app.FindAllRecords("notification_jobs")
 	if err != nil {

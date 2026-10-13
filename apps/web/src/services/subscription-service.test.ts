@@ -19,19 +19,16 @@ type ApiFetchMock = (url: string, schema: unknown, init?: RequestInit) => Promis
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn<ApiFetchMock>(),
-  getCurrentUserId: vi.fn(() => "user_1"),
+  getProductCurrentUserId: vi.fn(() => "user_1"),
 }));
 
 vi.mock("@/lib/api-client", () => ({
   apiFetch: mocks.apiFetch,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: {
-    lang: "zh-CN",
-    beforeSend: undefined,
-  },
-  getCurrentUserId: mocks.getCurrentUserId,
+vi.mock("@/services/product-session", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/services/product-session")>(),
+  getProductCurrentUserId: mocks.getProductCurrentUserId,
 }));
 
 const legacyPocketBaseRow = {
@@ -138,7 +135,7 @@ function formSubmission(overrides: Partial<RecurringFormSubmission> = {}): Recur
 
 beforeEach(() => {
   mocks.apiFetch.mockReset();
-  mocks.getCurrentUserId.mockReturnValue("user_1");
+  mocks.getProductCurrentUserId.mockReturnValue("user_1");
 });
 
 describe("subscription service normalization", () => {

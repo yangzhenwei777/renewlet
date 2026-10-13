@@ -5,7 +5,7 @@ export {
   CLOUD_BACKUP_DEFAULT_SCHEDULE_WEEKDAY,
   CLOUD_BACKUP_MAX_RETENTION,
   CLOUD_BACKUP_MAX_SNAPSHOT_BYTES,
-  CLOUD_BACKUP_RAW_RESPONSE_TEXT_MAX_CHARS,
+  CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS,
   cloudBackupConfigResponseSchema,
   cloudBackupConfigSchema,
   cloudBackupConfigUpdateSchema,
@@ -24,6 +24,7 @@ export {
   cloudBackupSnapshotsResponseSchema,
   cloudBackupTestRequestSchema,
   cloudBackupTestResponseSchema,
+  cloudBackupS3AddressingStyleSchema,
 } from "@renewlet/shared/schemas/cloud-backup";
 
 export type {
@@ -47,4 +48,5 @@ export type {
   CloudBackupTargetStatus,
   CloudBackupTestRequest,
   CloudBackupTestResponse,
+  CloudBackupS3AddressingStyle,
 } from "@renewlet/shared/schemas/cloud-backup";

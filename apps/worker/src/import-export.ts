@@ -22,7 +22,10 @@ import { serverText } from "./server-i18n";
 import { requireAuth } from "./auth";
 import { buildCostSharingCollectionReminderMirrorStatements, normalizeSubscriptionBodyForStorage, toSubscriptionRow, type SubscriptionBody } from "./subscriptions";
 import { subscriptionDerivedBulkMutationPlan, type SubscriptionDerivedMutation } from "./subscription-derived-state";
-import { buildSubscriptionSchedulerRefreshStatements } from "./subscription-scheduler-state";
+import {
+  buildSubscriptionSchedulerRefreshStatements,
+  subscriptionRepeatReminderContribution,
+} from "./subscription-scheduler-state";
 import { exchangeRateSnapshotUpsertStatement } from "./exchange-rate-snapshots";
 import type { Env, SubscriptionRow } from "./types";
 
@@ -129,10 +132,10 @@ async function applyImportRequest(request: Request, env: Env, metrics: { bodyByt
     statements.push(...await buildSubscriptionSchedulerRefreshStatements(env, auth.user.id, {
       resetAutoRenewCheck: false,
       settings: finalSettingsForMirrors,
-      repeatCandidates: rows.filter((row) => row.repeat_reminder_enabled === 1).map(toApiSubscription),
+      repeatCandidates: rows.filter((row) => row.repeat_reminder_enabled === 1 && row.status !== "cancelled").map(toApiSubscription),
       aggregateCounts: {
         autoRenewCount: rows.filter((row) => row.auto_renew === 1).length,
-        repeatReminderCount: rows.filter((row) => row.repeat_reminder_enabled === 1).length,
+        repeatReminderCount: rows.reduce((count, row) => count + subscriptionRepeatReminderContribution(row), 0),
       },
     }));
   }

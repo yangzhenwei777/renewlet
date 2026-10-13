@@ -9,6 +9,7 @@ import {
   getNextLocalScheduleOccurrence,
   getNextRepeatScheduleOccurrence,
   getRepeatScheduleDecision,
+  isCancelledSubscriptionStatus,
   scheduleOccurrence,
   toRfc3339Seconds,
 } from "./notification-schedule";
@@ -71,7 +72,7 @@ export async function buildSubscriptionSchedulerRefreshStatements(
   const counts = options.aggregateCounts ?? await env.DB.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN auto_renew = 1 THEN 1 ELSE 0 END), 0) AS autoRenewCount,
-        COALESCE(SUM(CASE WHEN repeat_reminder_enabled = 1 THEN 1 ELSE 0 END), 0) AS repeatReminderCount
+        COALESCE(SUM(CASE WHEN repeat_reminder_enabled = 1 AND status != 'cancelled' THEN 1 ELSE 0 END), 0) AS repeatReminderCount
       FROM subscriptions
       WHERE user_id = ?
     `).bind(userId).first<{ autoRenewCount: number; repeatReminderCount: number }>();
@@ -164,17 +165,16 @@ export async function advanceSubscriptionSchedulerDueState(
   repeatCandidates: ApiSubscription[] = [],
 ): Promise<void> {
   const settings = await getSettings(env, userId);
-  const statements = repeatCandidates.map((candidate) => {
-    const nextDue = nextRepeatNotificationDueForCandidates(now, settings, [candidate]);
-    return nextDue
-      ? env.DB.prepare(`
-          INSERT INTO subscription_repeat_schedule (user_id, subscription_id, next_due_at_utc)
-          VALUES (?, ?, ?)
-          ON CONFLICT(user_id, subscription_id) DO UPDATE SET next_due_at_utc = excluded.next_due_at_utc
-        `).bind(userId, candidate.id, nextDue)
-      : env.DB.prepare("DELETE FROM subscription_repeat_schedule WHERE user_id = ? AND subscription_id = ?")
-        .bind(userId, candidate.id);
-  });
+  const schedules = repeatCandidates.map((candidate) => [candidate.id, nextRepeatNotificationDueForCandidates(now, settings, [candidate], skipCurrentNotificationWindow)]);
+  // 提醒完成时一次推进整组候选；逐订阅SQL会让1000条repeat超过Free单次50查询限额。
+  const statements: D1PreparedStatement[] = schedules.length > 0 ? [
+    env.DB.prepare(`DELETE FROM subscription_repeat_schedule
+      WHERE user_id = ? AND subscription_id IN (SELECT json_extract(value, '$[0]') FROM json_each(?))`)
+      .bind(userId, JSON.stringify(schedules)),
+    env.DB.prepare(`INSERT INTO subscription_repeat_schedule (user_id, subscription_id, next_due_at_utc)
+      SELECT ?, json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?)
+      WHERE json_extract(value, '$[1]') IS NOT NULL`).bind(userId, JSON.stringify(schedules)),
+  ] : [];
   statements.push(env.DB.prepare(`
       UPDATE subscription_scheduler_state
       SET next_daily_notification_due_at_utc = ?,
@@ -207,8 +207,15 @@ export function subscriptionSchedulerMutationStatement(
   const row = mutation.after ?? mutation.before;
   if (!row) throw new Error("subscription scheduler mutation requires a row");
   const autoDelta = Number(mutation.after?.auto_renew === 1) - Number(mutation.before?.auto_renew === 1);
-  const repeatDelta = Number(mutation.after?.repeat_reminder_enabled === 1) - Number(mutation.before?.repeat_reminder_enabled === 1);
+  const repeatDelta = subscriptionRepeatReminderContribution(mutation.after) - subscriptionRepeatReminderContribution(mutation.before);
   return subscriptionSchedulerDeltaStatement(env, row.user_id, autoDelta, repeatDelta, settings, now);
+}
+
+/** scheduler count 与 repeat schedule 必须把 cancelled 视为无资格，状态切换才能产生对称 delta。 */
+export function subscriptionRepeatReminderContribution(
+  row: Pick<SubscriptionRow, "status" | "repeat_reminder_enabled"> | null,
+): number {
+  return row?.repeat_reminder_enabled === 1 && !isCancelledSubscriptionStatus(row?.status ?? "") ? 1 : 0;
 }
 
 export function subscriptionSchedulerDeltaStatement(
@@ -277,53 +284,6 @@ export async function markAutoRenewCheckedForLocalDate(env: Env, userId: string,
   `).bind(localDate, nextCheck, nowIso(), userId).run();
 }
 
-export async function listAutoRenewDueUsers(env: Env, now: Date, limit: number): Promise<Array<{ user_id: string }>> {
-  const result = await env.DB.prepare(`
-    SELECT scheduler.user_id
-    FROM subscription_scheduler_state AS scheduler
-    JOIN users ON users.id = scheduler.user_id
-    WHERE users.banned = 0
-      AND scheduler.auto_renew_count > 0
-      AND (scheduler.next_auto_renew_check_at_utc IS NULL OR scheduler.next_auto_renew_check_at_utc <= ?)
-    ORDER BY scheduler.next_auto_renew_check_at_utc IS NOT NULL, scheduler.next_auto_renew_check_at_utc ASC, scheduler.user_id ASC
-    LIMIT ?
-  `).bind(toRfc3339Seconds(now), limit).all<{ user_id: string }>();
-  return result.results;
-}
-
-export async function listNotificationDueUsers(env: Env, now: Date, limit: number, excludeUserIds: readonly string[] = []): Promise<Array<{ user_id: string }>> {
-  const nowUtc = toRfc3339Seconds(now);
-  const uniqueExcludeUserIds = [...new Set(excludeUserIds.map((id) => id.trim()).filter(Boolean))].sort();
-  // exclude 来自本 tick 已处理集合，仍必须绑定为 SQL 参数，不能拼接到查询文本里当作可信 id。
-  const excludeClause = uniqueExcludeUserIds.length > 0
-    ? `AND scheduler.user_id NOT IN (${uniqueExcludeUserIds.map(() => "?").join(", ")})`
-    : "";
-  // daily/repeat 共用一个用户队列；单用户内仍以日常提醒优先，保持旧调度语义不因索引拆分而变成双发送。
-  const result = await env.DB.prepare(`
-    SELECT scheduler.user_id
-    FROM subscription_scheduler_state AS scheduler
-    JOIN users ON users.id = scheduler.user_id
-    WHERE users.banned = 0
-      AND (
-        scheduler.next_daily_notification_due_at_utc IS NULL
-        OR scheduler.next_daily_notification_due_at_utc <= ?
-        OR (
-          scheduler.repeat_reminder_count > 0
-          AND (scheduler.next_repeat_notification_due_at_utc IS NULL OR scheduler.next_repeat_notification_due_at_utc <= ?)
-        )
-      )
-      ${excludeClause}
-    ORDER BY
-      min(
-        COALESCE(scheduler.next_daily_notification_due_at_utc, '0000-01-01T00:00:00Z'),
-        COALESCE(scheduler.next_repeat_notification_due_at_utc, '9999-12-31T23:59:59Z')
-      ) ASC,
-      scheduler.user_id ASC
-    LIMIT ?
-  `).bind(nowUtc, nowUtc, ...uniqueExcludeUserIds, limit).all<{ user_id: string }>();
-  return result.results;
-}
-
 async function readSubscriptionSchedulerState(env: Env, userId: string): Promise<SubscriptionSchedulerStateRow | null> {
   if (!userId) return null;
   return await env.DB.prepare(`
@@ -363,7 +323,8 @@ function nextAutoRenewCheckAt(now: Date, timezone: string, autoRenewCount: numbe
 
 function nextDailyNotificationDueAt(now: Date, timezone: string, localTime: string, skipCurrentWindow: boolean): string {
   // 只有通知 job 已收敛时才跳过当前 2 分钟窗口；失败或 sending 状态会保留旧 due 供下一分钟重试。
-  if (skipCurrentWindow) return getNextLocalScheduleOccurrence(now, timezone, localTime).scheduledInstantUtc;
+  // 续接使用冻结的窗口instant；完成后必须严格推进，不能依赖真实时钟越过整分钟。
+  if (skipCurrentWindow) return getNextLocalScheduleOccurrence(now, timezone, localTime, false).scheduledInstantUtc;
   const current = getLocalScheduleDecision(now, timezone, localTime, NOTIFICATION_CRON_WINDOW_MINUTES, false);
   if (current.due) return current.scheduledInstantUtc;
   return getNextLocalScheduleOccurrence(now, timezone, localTime).scheduledInstantUtc;
@@ -396,10 +357,11 @@ function nextRepeatNotificationDueForCandidates(
   now: Date,
   settings: Pick<ApiAppSettings, "timezone" | "notificationTimeLocal" | "notificationReminderDays">,
   candidates: ApiSubscription[],
+  skipCurrentWindow = false,
 ): string | null {
   if (candidates.length === 0) return null;
   const current = getRepeatScheduleDecision(now, settings, candidates, NOTIFICATION_CRON_WINDOW_MINUTES);
-  if (current.due) return current.scheduledInstantUtc;
+  if (current.due && !skipCurrentWindow) return current.scheduledInstantUtc;
   return getNextRepeatScheduleOccurrence(now, settings, candidates)?.scheduledInstantUtc ?? null;
 }
 

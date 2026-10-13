@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import fixtures from "./subscription-renewal-fixtures.json";
 import {
   advanceSubscriptionRenewal,
+  calculateNextBillingDate,
   isAutoRenewEligible,
   isManualRenewEligible,
   type RenewalMode,
@@ -20,6 +21,13 @@ type Fixture = {
 };
 
 describe("subscription renewal", () => {
+  it("retains the historical calendar advance bound after jumping directly to the due cycle", () => {
+    expect(() => calculateNextBillingDate("0001-01-31", "monthly", undefined, "1667-10-01"))
+      .toThrow("SUBSCRIPTION_RENEWAL_ADVANCE_LIMIT_EXCEEDED");
+    expect(calculateNextBillingDate("0001-01-31", "custom", 1, "2026-10-09", "day"))
+      .toBe("2026-10-09");
+  });
+
   // 这份 fixture 同时被 Go 后端读取；新增续订规则时先扩展 fixture，再让两端实现追同一组期望。
   it.each(fixtures as Fixture[])("matches fixture $name", (fixture) => {
     const eligible = fixture.mode === "auto"

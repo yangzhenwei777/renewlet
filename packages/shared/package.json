@@ -2,7 +2,7 @@
   "name": "@renewlet/shared",
   "private": true,
   "license": "MIT",
-  "version": "0.3.26",
+  "version": "0.3.30",
   "type": "module",
   "exports": {
     "./schemas/api": "./src/schemas/api.ts",
@@ -46,11 +46,13 @@
     "./email-template": "./src/email-template.ts",
     "./ics": "./src/ics.ts",
     "./i18n-config": "./src/i18n-config.ts",
+    "./schedule-time": "./src/schedule-time.ts",
     "./subscription-billing": "./src/subscription-billing.ts",
     "./subscription-renewal": "./src/subscription-renewal.ts",
     "./settings-normalization": "./src/settings-normalization.ts",
     "./settings-defaults": "./src/settings-defaults.ts",
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./public-api-docs": "./src/public-api-docs.ts"
   },
   "scripts": {
     "test:perf": "vitest run src/contract-fixtures.performance.test.ts",
@@ -64,6 +66,6 @@
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

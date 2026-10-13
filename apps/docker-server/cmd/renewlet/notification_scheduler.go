@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -90,34 +89,6 @@ func addDateOnly(date string, days int) string {
 	return parsed.AddDate(0, 0, days).Format("2006-01-02")
 }
 
-func isValidLocalTime(value string) bool {
-	if len(value) != 5 || value[2] != ':' {
-		return false
-	}
-	hour, errH := strconv.Atoi(value[:2])
-	minute, errM := strconv.Atoi(value[3:])
-	return errH == nil && errM == nil && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
-}
-
-func parseLocalTime(value string) (int, int) {
-	hour, _ := strconv.Atoi(value[:2])
-	minute, _ := strconv.Atoi(value[3:])
-	return hour, minute
-}
-
-func getScheduleInstant(localDate, localTime, timezone string) (time.Time, error) {
-	loc, err := time.LoadLocation(timezone)
-	if err != nil {
-		return time.Time{}, err
-	}
-	day, err := time.Parse("2006-01-02", localDate)
-	if err != nil {
-		return time.Time{}, err
-	}
-	hour, minute := parseLocalTime(localTime)
-	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc).UTC(), nil
-}
-
 // getLocalScheduleDecision 判断当前 tick 是否命中用户本地通知窗口。
 // 同时检查昨天的本地日期，是为了覆盖 UTC tick 与用户时区跨日时的边界窗口。
 func getLocalScheduleDecision(now time.Time, timezone string, localTime string, windowMinutes int, force bool) localScheduleDecision {
@@ -188,8 +159,7 @@ func buildScheduleDecision(now time.Time, localDate string, localTime string, ti
 	}
 }
 
-// getNextLocalScheduleOccurrence 返回下一次本地通知时间。
-func getNextLocalScheduleOccurrence(now time.Time, timezone string, localTime string) localScheduleOccurrence {
+func getNextLocalScheduleOccurrence(now time.Time, timezone string, localTime string, includeCurrent bool) localScheduleOccurrence {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
 		loc = time.UTC
@@ -202,7 +172,7 @@ func getNextLocalScheduleOccurrence(now time.Time, timezone string, localTime st
 	today := localNow.Format("2006-01-02")
 	todayInstant, _ := getScheduleInstant(today, localTime, timezone)
 	date := today
-	if todayInstant.Before(now.UTC()) {
+	if todayInstant.Before(now.UTC()) || (!includeCurrent && todayInstant.Equal(now.UTC())) {
 		date = localNow.AddDate(0, 0, 1).Format("2006-01-02")
 	}
 	instant, _ := getScheduleInstant(date, localTime, timezone)
@@ -218,7 +188,7 @@ func getNextLocalScheduleOccurrence(now time.Time, timezone string, localTime st
 // PERF： 当前按未来 N 天逐日扫描订阅；订阅量明显增长后可改为按 nextBillingDate/trialEndDate 建索引查询。
 func buildNotificationOverview(now time.Time, settings appSettings, subscriptions []notificationSubscription, days int) notificationOverview {
 	days = maxInt(days, 1)
-	dailyNextCheck := getNextLocalScheduleOccurrence(now, settings.Timezone, settings.NotificationTimeLocal)
+	dailyNextCheck := getNextLocalScheduleOccurrence(now, settings.Timezone, settings.NotificationTimeLocal, true)
 	nextCheck := dailyNextCheck
 	if repeatNext, ok := getNextRepeatScheduleOccurrence(now, settings, subscriptions); ok {
 		if repeatInstant, err := time.Parse(time.RFC3339, repeatNext.ScheduledInstantUTC); err == nil {
@@ -283,10 +253,10 @@ func runNotificationCron(app core.App, options notificationCronOptions) (notific
 	options = resolveCronOptions(options)
 	results := []notificationCronUserResult{}
 	if !options.Force {
-		seenUserIDs := map[string]struct{}{}
+		afterUserID := ""
 		for {
-			// failed/fresh sending 会故意留在 due-index 内；SQL 层排除本 tick 已处理用户，避免第一页失败用户饿住后续 due 用户。
-			userIDs, err := listNotificationDueUserIDsExcluding(app, options.Now, notificationCronPageSize, seenUserIDs)
+			// 账号ID游标与处理结果无关；failed/fresh sending保留due时也只在本轮处理一次。
+			userIDs, err := listNotificationDueUserIDs(app, options.Now, notificationCronPageSize, afterUserID)
 			if err != nil {
 				return notificationCronResult{}, err
 			}
@@ -294,7 +264,7 @@ func runNotificationCron(app core.App, options notificationCronOptions) (notific
 				return summarizeCronResult(options, results), nil
 			}
 			for _, userID := range userIDs {
-				seenUserIDs[userID] = struct{}{}
+				afterUserID = userID
 				row, err := notificationSettingsRecordForUser(app, userID)
 				if err != nil {
 					if _, refreshErr := refreshSubscriptionSchedulerStateWithOptions(app, userID, subscriptionSchedulerRefreshOptions{Now: options.Now}); refreshErr != nil {
@@ -411,8 +381,17 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 		}
 		return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "retries_disabled"}, nil
 	}
-	if !options.Force && existingJob != nil && existingJob.GetString("status") == notificationStatusFailed && attempts >= options.MaxRetries {
-		// 超过重试预算后不再扰动外部渠道，同时推进 due-index，防止同一 failed 窗口长期占住 cron 热路径。
+	if !options.Force && existingJob != nil && attempts >= options.MaxRetries {
+		// 失败和过期sending共享次数上限；先撤销旧发送者身份，再允许推进due-index。
+		if existingJob.GetString("status") == notificationStatusSending && !options.DryRun {
+			settled, err := failExhaustedNotificationJob(app, existingJob)
+			if err != nil {
+				return notificationCronUserResult{}, err
+			}
+			if !settled {
+				return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "claim_lost"}, nil
+			}
+		}
 		if err := refreshNotificationSettledDerivedState(app, userID, settings, schedule.localScheduleOccurrence, options); err != nil {
 			return notificationCronUserResult{}, err
 		}
@@ -434,8 +413,8 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 		finalReason = "no_due_items"
 	}
 	previousChannels := jobChannels{}
-	if existingJob != nil && existingJob.GetString("status") == notificationStatusFailed {
-		// 失败任务只重试失败渠道，已成功渠道不再重复推送。
+	if existingJob != nil {
+		// failed接管中断后仍保留旧成功记录；stale sending不能因此重发已成功渠道。
 		previousChannels = readJobChannels(existingJob)
 	}
 	channelsToSend := channelsToSend(existingJob, previousChannels, settings.EnabledChannels)
@@ -454,8 +433,14 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 			if !created {
 				return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "job_already_exists"}, nil
 			}
-		} else if err := markNotificationJobSending(app, existingJob, attempts+1); err != nil {
-			return notificationCronUserResult{}, err
+		} else {
+			existingJob, err = markNotificationJobSending(app, existingJob, attempts+1)
+			if err != nil {
+				return notificationCronUserResult{}, err
+			}
+			if existingJob == nil {
+				return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "claim_lost"}, nil
+			}
 		}
 	}
 
@@ -473,8 +458,10 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 	if finalReason != "" {
 		// 即使没有可发送内容也写入 skipped job，前端历史才能解释“本次 cron 已检查但无提醒”。
 		result := createJobResult(finalReason, schedule.localScheduleOccurrence, settings, contentLocale, due, options, jobChannels{})
-		if err := finalizeNotificationJob(app, existingJob, userID, schedule, notificationStatusSkipped, "", result); err != nil {
+		if finalized, err := finalizeNotificationJob(app, existingJob, userID, schedule, notificationStatusSkipped, "", result); err != nil {
 			return notificationCronUserResult{}, err
+		} else if !finalized {
+			return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "claim_lost"}, nil
 		}
 		if err := refreshNotificationSettledDerivedState(app, userID, settings, schedule.localScheduleOccurrence, options); err != nil {
 			return notificationCronUserResult{}, err
@@ -485,8 +472,10 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 	if noRetryableChannels {
 		channels := mergeChannelResults(previousChannels, sendSummary{}, settings.EnabledChannels)
 		result := createJobResult("", schedule.localScheduleOccurrence, settings, contentLocale, due, options, channels)
-		if err := finalizeNotificationJob(app, existingJob, userID, schedule, notificationStatusSent, "", result); err != nil {
+		if finalized, err := finalizeNotificationJob(app, existingJob, userID, schedule, notificationStatusSent, "", result); err != nil {
 			return notificationCronUserResult{}, err
+		} else if !finalized {
+			return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "claim_lost"}, nil
 		}
 		if err := refreshNotificationSettledDerivedState(app, userID, settings, schedule.localScheduleOccurrence, options); err != nil {
 			return notificationCronUserResult{}, err
@@ -509,8 +498,10 @@ func processNotificationCronUser(app core.App, options notificationCronOptions, 
 		lastError = strings.Join(parts, " | ")
 	}
 	result := createJobResult(reason, schedule.localScheduleOccurrence, settings, contentLocale, due, options, channels)
-	if err := finalizeNotificationJob(app, existingJob, userID, schedule, status, lastError, result); err != nil {
+	if finalized, err := finalizeNotificationJob(app, existingJob, userID, schedule, status, lastError, result); err != nil {
 		return notificationCronUserResult{}, err
+	} else if !finalized {
+		return notificationCronUserResult{UserID: userID, Action: "skipped", Reason: "claim_lost"}, nil
 	}
 	action := "sent"
 	if status == notificationStatusFailed {

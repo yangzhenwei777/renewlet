@@ -22,6 +22,7 @@ import { randomToken } from "./crypto";
 import { requireAuth } from "./auth";
 import { HttpError, ok, readJson, requestLocale, successJson } from "./http";
 import { accountContentLocale, serverFormat, serverText, type AppLocale } from "./server-i18n";
+import { localizedConfigLabel } from "./custom-config-labels";
 import { calendarFeedBuiltInCategoryLabelKey, calendarFeedBuiltInPaymentMethodLabelKey } from "./calendar-feed-built-in-labels";
 import { requestOrigin } from "./request-origin";
 import { dateOnlyInZone } from "./time";
@@ -371,8 +372,8 @@ async function newCalendarFeedLabelResolver(
   if (!result.success) return empty;
   // 公开 ICS route 没有登录态上下文；用户配置只做优先查找，缺失的内置项回 server i18n，未知自定义 value 保留原文。
   return calendarFeedLabelResolver(
-    calendarFeedLabelMap(result.data.categories, locale),
-    calendarFeedLabelMap(result.data.paymentMethods, locale),
+    calendarFeedLabelMap(result.data.categories, locale, calendarFeedBuiltInCategoryLabelKey),
+    calendarFeedLabelMap(result.data.paymentMethods, locale, calendarFeedBuiltInPaymentMethodLabelKey),
     locale,
   );
 }
@@ -400,21 +401,17 @@ function calendarFeedResolvedLabel(
   return key ? serverText(locale, key) : value;
 }
 
-function calendarFeedLabelMap(items: ApiCustomConfig["categories"], locale: AppLocale): Map<string, string> {
+function calendarFeedLabelMap(
+  items: ApiCustomConfig["categories"],
+  locale: AppLocale,
+  builtInLabelKey: CalendarFeedBuiltInLabelKeyResolver,
+): Map<string, string> {
   const labels = new Map<string, string>();
   for (const item of items) {
-    const label = calendarFeedLocalizedConfigLabel(item.labels, locale);
+    const label = localizedConfigLabel(item.labels, locale, builtInLabelKey(item.value));
     if (label) labels.set(item.value, label);
   }
   return labels;
-}
-
-function calendarFeedLocalizedConfigLabel(
-  labels: ApiCustomConfig["categories"][number]["labels"],
-  locale: AppLocale,
-): string | undefined {
-  if (locale === "en-US") return labels["en-US"] || labels["zh-CN"] || undefined;
-  return labels["zh-CN"] || labels["en-US"] || undefined;
 }
 
 async function ensureCalendarFeedSchema(env: Env, locale: ReturnType<typeof requestLocale>): Promise<void> {

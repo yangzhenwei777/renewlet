@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { lingui } from "@lingui/vite-plugin";
+import babel from "@rolldown/plugin-babel";
+import { linguiCatalogs } from "./vite/lingui-catalogs.ts";
 import { defineConfig } from "vitest/config";
 import { resolveClientBuildVersion } from "./vite/build-version.js";
 
@@ -8,7 +9,8 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(rootDir, "../..");
 
 export default defineConfig({
-  plugins: [lingui({ failOnCompileError: true })],
+  // Vitest 使用 SSR transform；直接启用同一 Compiler，避免官方 client-only preset 跳过组件回归。
+  plugins: [linguiCatalogs(), babel({ plugins: [["babel-plugin-react-compiler", { compilationMode: "annotation" }]] })],
   resolve: {
     alias: {
       "@": path.resolve(rootDir, "src"),

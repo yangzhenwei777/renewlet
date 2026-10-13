@@ -49,6 +49,7 @@ type notificationScheduleFixtureExpectation struct {
 	ScheduledLocalTime  string                  `json:"scheduledLocalTime"`
 	TimeZone            string                  `json:"timeZone"`
 	ScheduledInstantUTC string                  `json:"scheduledInstantUtc"`
+	NextDailyInstantUTC string                  `json:"nextDailyInstantUtc"`
 	ItemTypes           []string                `json:"itemTypes"`
 	RepeatReminder      *repeatReminderSnapshot `json:"repeatReminder"`
 }
@@ -70,6 +71,11 @@ func TestNotificationScheduleMatchesSharedFixtures(t *testing.T) {
 			decision := getNotificationScheduleDecision(now, settings, subscriptions, fixture.WindowMinutes, fixture.Force)
 			if decision.Due != fixture.Expected.Due {
 				t.Fatalf("due = %v, want %v; reason=%s", decision.Due, fixture.Expected.Due, decision.Reason)
+			}
+			if fixture.Expected.NextDailyInstantUTC != "" {
+				if got := getNextLocalScheduleOccurrence(now, settings.Timezone, settings.NotificationTimeLocal, false).ScheduledInstantUTC; got != fixture.Expected.NextDailyInstantUTC {
+					t.Fatalf("next daily = %s, want %s", got, fixture.Expected.NextDailyInstantUTC)
+				}
 			}
 			if !fixture.Expected.Due {
 				return

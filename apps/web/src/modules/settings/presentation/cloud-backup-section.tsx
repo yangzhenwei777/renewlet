@@ -58,6 +58,7 @@ export function CloudBackupSection({
     hasUnsavedChanges,
     snapshotsErrorMessage,
     cloudBackupErrorDetails,
+    cloudBackupErrorDetailsContext,
     cloudBackupErrorDetailsOpen,
     setCloudBackupErrorDetailsOpen,
     openSnapshotsErrorDetails,
@@ -86,6 +87,23 @@ export function CloudBackupSection({
   const lastBackupLabel = providerStatus?.lastBackupAt
     ? formatDateTime(providerStatus.lastBackupAt, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
     : t("settings.cloudBackupNeverBackedUp");
+  // 同一协议阶段可能由测试、备份或恢复触发，提示必须跟随发起动作；历史 lastError 只代表备份结果，不能冒充当前请求详情。
+  const actionErrorContext = cloudBackupErrorDetailsContext?.scope === "action"
+    && cloudBackupErrorDetailsContext.provider === form.provider
+    && cloudBackupErrorDetails !== null
+    ? cloudBackupErrorDetailsContext
+    : null;
+  const requestLimitPaused = providerStatus?.lastError === "CLOUD_BACKUP_WEBDAV_REQUEST_LIMIT"
+    && !config.data?.policyByProvider[form.provider].scheduleEnabled;
+  const errorMessage = actionErrorContext
+    ? {
+      test: t("settings.cloudBackupTestFailed"),
+      create: t("settings.cloudBackupCreateFailed"),
+      restore: t("settings.cloudBackupRestoreFailed"),
+      delete: t("settings.cloudBackupDeleteFailed"),
+    }[actionErrorContext.action]
+    : requestLimitPaused ? t("settings.cloudBackupRequestLimitPaused")
+      : providerStatus?.lastError ? t("settings.cloudBackupLastError") : null;
   const deleteDialogBusy = deleteTarget ? deletingSnapshotKey === cloudBackupSnapshotKey(deleteTarget) : false;
   const sectionSummary = config.isInitialLoading
     ? t("common.loading")
@@ -116,6 +134,7 @@ export function CloudBackupSection({
           disabled={disabled}
           onProviderChange={(provider) => updateForm("provider", provider)}
           onTextChange={(field: CloudBackupConnectionField, value) => updateForm(field, value)}
+          onAddressingStyleChange={(value) => updateForm("s3AddressingStyle", value)}
         />
         <CloudBackupPolicyForm
           scheduleEnabled={form.scheduleEnabled}
@@ -136,7 +155,8 @@ export function CloudBackupSection({
           credentialLabel={credentialLabel}
           statusLabel={statusLabel}
           lastBackupLabel={lastBackupLabel}
-          lastError={providerStatus?.lastError ?? null}
+          errorMessage={errorMessage}
+          canOpenErrorDetails={actionErrorContext !== null}
           saveLabel={saveLabel}
           busy={busy}
           disabled={disabled}
@@ -147,6 +167,7 @@ export function CloudBackupSection({
           onSave={saveConfig}
           onTest={testConfig}
           onCreate={createSnapshot}
+          onOpenErrorDetails={() => setCloudBackupErrorDetailsOpen(true)}
         />
         <CloudBackupSnapshotList
           state={snapshots}

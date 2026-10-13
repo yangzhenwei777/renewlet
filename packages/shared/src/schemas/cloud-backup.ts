@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { RENEWLET_EXPORT_SCHEMA_VERSION } from "./import-export";
 import {
-  UPSTREAM_RAW_RESPONSE_TEXT_MAX_CHARS,
-  upstreamErrorDetailsSchema,
+  UPSTREAM_RAW_RESPONSE_TEXT_CAPTURE_MAX_CHARS,
 } from "./upstream";
 import { apiSuccessResponseSchema } from "./api";
 import { okPayloadSchema, okResponseSchema } from "./common";
@@ -10,7 +9,7 @@ import { okPayloadSchema, okResponseSchema } from "./common";
 export const CLOUD_BACKUP_DEFAULT_RETENTION = 7;
 export const CLOUD_BACKUP_MAX_RETENTION = 30;
 export const CLOUD_BACKUP_MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;
-export const CLOUD_BACKUP_RAW_RESPONSE_TEXT_MAX_CHARS = UPSTREAM_RAW_RESPONSE_TEXT_MAX_CHARS;
+export const CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS = UPSTREAM_RAW_RESPONSE_TEXT_CAPTURE_MAX_CHARS;
 export const CLOUD_BACKUP_DEFAULT_SCHEDULE_TIME = "03:00";
 export const CLOUD_BACKUP_DEFAULT_SCHEDULE_WEEKDAY = "monday";
 
@@ -33,6 +32,9 @@ const cloudBackupDefaultRemotePrefix = "renewlet";
 export const cloudBackupProviderSchema = z.enum(["webdav", "s3"]);
 export type CloudBackupProvider = z.infer<typeof cloudBackupProviderSchema>;
 
+export const cloudBackupS3AddressingStyleSchema = z.enum(["auto", "pathStyle", "virtualHost"]);
+export type CloudBackupS3AddressingStyle = z.infer<typeof cloudBackupS3AddressingStyleSchema>;
+
 export const cloudBackupScheduleFrequencySchema = z.enum(["daily", "weekly"]);
 export type CloudBackupScheduleFrequency = z.infer<typeof cloudBackupScheduleFrequencySchema>;
 
@@ -44,35 +46,43 @@ export const cloudBackupScheduleTimeSchema = z.string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export type CloudBackupScheduleTime = z.infer<typeof cloudBackupScheduleTimeSchema>;
 
-const pathPrefixSchema = z.string()
+const createPathPrefixSchema = (fallback: string) => z.string()
   .trim()
   .max(512)
   .refine((value) => !value.includes(".."), "Path must not contain parent directory segments")
-  // Docker Go 和 Worker 都把空远端目录落回默认前缀；否则两个运行面对根目录 MKCOL/PROPFIND 的 SDK 行为会漂移。
-  .transform((value) => value.replace(/^\/+|\/+$/g, "") || cloudBackupDefaultRemotePrefix);
+  .transform((value) => value.replace(/^\/+|\/+$/g, "") || fallback);
+
+// WebDAV 根目录需要 SDK 创建目录；S3 根对象不需要目录占位，因此两种空值语义必须在共同 schema 处分开。
+const webDavPathSchema = createPathPrefixSchema(cloudBackupDefaultRemotePrefix);
+const s3PrefixSchema = createPathPrefixSchema("");
+
+// 凭据只能通过独立的 write-only 字段传递；endpoint userinfo 会把凭据带入日志、签名目标和诊断文本。
+const httpsEndpointSchema = (message: string) => z.string()
+  .trim()
+  .url()
+  .refine((value) => {
+    const parsed = new URL(value);
+    return value.startsWith("https://") && !parsed.username && !parsed.password;
+  }, message);
 
 export const cloudBackupWebDavConfigSchema = z.object({
-  url: z.string().trim().url().refine((value) => value.startsWith("https://"), "WebDAV URL must use HTTPS"),
+  url: httpsEndpointSchema("WebDAV URL must use HTTPS and must not contain credentials"),
   username: z.string().trim().max(256).optional().default(""),
-  path: pathPrefixSchema.optional().default(cloudBackupDefaultRemotePrefix),
+  path: webDavPathSchema.optional().default(cloudBackupDefaultRemotePrefix),
 }).strict();
 export type CloudBackupWebDavConfig = z.infer<typeof cloudBackupWebDavConfigSchema>;
 
 const cloudBackupS3ConfigObjectSchema = z.object({
-  endpoint: z.string().trim().url().refine((value) => value.startsWith("https://"), "S3 endpoint must use HTTPS"),
+  endpoint: httpsEndpointSchema("S3 endpoint must use HTTPS and must not contain credentials"),
   // SigV4 的 credential scope 包含 signing region；S3-compatible endpoint 没有通用 discovery 标准，不能再静默猜默认值。
   region: z.string().trim().min(1, "S3 signing region is required").max(64),
-  bucket: z.string().trim().min(1).max(128),
-  prefix: pathPrefixSchema.optional().default(cloudBackupDefaultRemotePrefix),
+  bucket: z.string().trim().min(1).max(128).refine((value) => !value.includes("/"), "S3 bucket must not contain path separators"),
+  prefix: s3PrefixSchema.optional().default(cloudBackupDefaultRemotePrefix),
+  addressingStyle: cloudBackupS3AddressingStyleSchema.default("auto"),
   accessKeyId: z.string().trim().max(256).optional().default(""),
 }).strict();
 
-export const cloudBackupS3ConfigSchema = z.preprocess((value) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  // 旧版本把 S3 addressingStyle 暴露给用户保存；现在寻址由后端按 endpoint 自动判断，边界处剥离可让旧配置在下一次保存后自然清理。
-  const { addressingStyle: _addressingStyle, ...clean } = value as Record<string, unknown>;
-  return clean;
-}, cloudBackupS3ConfigObjectSchema);
+export const cloudBackupS3ConfigSchema = cloudBackupS3ConfigObjectSchema;
 export type CloudBackupS3Config = z.infer<typeof cloudBackupS3ConfigSchema>;
 
 export const cloudBackupPolicySchema = z.object({
@@ -210,5 +220,56 @@ export type CloudBackupCreateSnapshotResponse = z.infer<typeof cloudBackupCreate
 export const cloudBackupDeleteSnapshotResponseSchema = okResponseSchema;
 export type CloudBackupDeleteSnapshotResponse = z.infer<typeof okPayloadSchema>;
 
-export const cloudBackupErrorDetailsSchema = upstreamErrorDetailsSchema;
-export type CloudBackupErrorDetails = z.infer<typeof cloudBackupErrorDetailsSchema>;
+const cloudBackupCleanupErrorSchema = z.object({
+  operation: z.string().trim().min(1),
+  target: z.string().trim().min(1).max(1024),
+  code: z.string().trim().min(1),
+  message: z.string().trim().max(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS),
+}).strict();
+
+/**
+ * 云备份错误只描述一次真实的协议阶段；transport 不再把 provider 错误改写成业务动作错误。
+ * 服务端正文与本地异常分别保存，避免 HTTP 成功但解析失败时丢失原因；详情只随当前认证请求返回。
+ */
+export type CloudBackupErrorDetails = {
+  provider?: CloudBackupProvider | undefined;
+  operation: string;
+  target: string;
+  httpStatus?: number | undefined;
+  httpStatusText?: string | undefined;
+  providerCode?: string | undefined;
+  providerMessage?: string | undefined;
+  clientMessage?: string | undefined;
+  requestId?: string | undefined;
+  requiredCapability?: string | undefined;
+  cleanup?: Array<{
+    operation: string;
+    target: string;
+    code: string;
+    message: string;
+  }> | undefined;
+  attempts?: Array<{
+    provider: CloudBackupProvider;
+    code: string;
+    details?: CloudBackupErrorDetails | undefined;
+  }> | undefined;
+};
+
+export const cloudBackupErrorDetailsSchema: z.ZodType<CloudBackupErrorDetails> = z.lazy(() => z.object({
+  provider: cloudBackupProviderSchema.optional(),
+  operation: z.string().trim().min(1),
+  target: z.string().trim().min(1).max(1024),
+  httpStatus: z.number().int().min(100).max(599).optional(),
+  httpStatusText: z.string().trim().max(128).optional(),
+  providerCode: z.string().trim().max(256).optional(),
+  providerMessage: z.string().max(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS).optional(),
+  clientMessage: z.string().max(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS).optional(),
+  requestId: z.string().trim().max(256).optional(),
+  requiredCapability: z.string().trim().max(256).optional(),
+  cleanup: z.array(cloudBackupCleanupErrorSchema).max(4).optional(),
+  attempts: z.array(z.object({
+    provider: cloudBackupProviderSchema,
+    code: z.string().trim().min(1),
+    details: cloudBackupErrorDetailsSchema.optional(),
+  }).strict()).max(4).optional(),
+}).strict());

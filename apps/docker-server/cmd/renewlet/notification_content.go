@@ -45,11 +45,11 @@ func listNotificationScheduleCandidateSubscriptions(app core.App, userID string,
 		"maxDate":   addDateOnly(schedule.ScheduledLocalDate, maxReminderDays),
 	}
 	branches := []string{
-		"user = {:user} && reminderDays != {:disabled} && nextBillingDate >= {:localDate} && nextBillingDate <= {:maxDate}",
-		"user = {:user} && reminderDays != {:disabled} && trialEndDate >= {:localDate} && trialEndDate <= {:maxDate}",
+		"user = {:user} && status != 'cancelled' && reminderDays != {:disabled} && nextBillingDate >= {:localDate} && nextBillingDate <= {:maxDate}",
+		"user = {:user} && status != 'cancelled' && reminderDays != {:disabled} && trialEndDate >= {:localDate} && trialEndDate <= {:maxDate}",
 	}
 	if includeExpired && settings.ShowExpired {
-		branches = append(branches, "user = {:user} && reminderDays != {:disabled} && nextBillingDate < {:localDate}")
+		branches = append(branches, "user = {:user} && status != 'cancelled' && reminderDays != {:disabled} && nextBillingDate < {:localDate}")
 	}
 	branches = append(branches, "user = {:user} && costSharingCollectionReminderEnabled = true && costSharingNextCollectionReminderDate != '' && costSharingNextCollectionReminderDate <= {:localDate}")
 	// 每个分支都对应独立索引候选；cron 热路径不解析 costSharing JSON，精确日期和成员周期由 collector 统一过滤。
@@ -83,7 +83,7 @@ func listRepeatReminderCandidateSubscriptions(app core.App, userID string, setti
 		"localDate": localDate,
 		"maxDate":   addDateOnly(localDate, maxReminderDays),
 	}
-	filter := "user = {:user} && reminderDays != {:disabled} && repeatReminderEnabled = true && " +
+	filter := "user = {:user} && status != 'cancelled' && reminderDays != {:disabled} && repeatReminderEnabled = true && " +
 		"((nextBillingDate >= {:localDate} && nextBillingDate <= {:maxDate}) || (status = 'trial' && trialEndDate >= {:localDate} && trialEndDate <= {:maxDate}))"
 	// 非日常窗口每分钟只允许读取 repeat 候选；否则 D1 rows read 和 PocketBase I/O 会随订阅总量线性放大。
 	return listNotificationSubscriptionsByFilter(app, filter, params)
@@ -134,6 +134,11 @@ func isInheritReminderDays(value int) bool {
 
 func isDisabledReminderDays(value int) bool {
 	return value == disabledReminderDays
+}
+
+// cancelled 只停用普通续费、固定期限到期、过期与 repeat 提醒；家庭共享收款提醒不调用此资格判断，保持独立责任流。
+func isSubscriptionReminderEligible(sub notificationSubscription) bool {
+	return sub.Status != "cancelled"
 }
 
 func effectiveReminderDays(sub notificationSubscription, settings appSettings) (int, bool) {
@@ -206,7 +211,7 @@ func collectNotificationItems(localDate string, settings appSettings, subscripti
 }
 
 func collectSubscriptionReminderItems(localDate string, settings appSettings, sub notificationSubscription, includeExpired bool) []notificationContentItem {
-	if isDisabledReminderDays(sub.ReminderDays) {
+	if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) {
 		// -2 表示单订阅静默；只关闭普通续费/到期提醒，不影响独立的家庭共享收款提醒。
 		return []notificationContentItem{}
 	}
@@ -241,7 +246,7 @@ func collectSubscriptionReminderItems(localDate string, settings appSettings, su
 }
 
 func collectTrialReminderItems(localDate string, settings appSettings, sub notificationSubscription) []notificationContentItem {
-	if isDisabledReminderDays(sub.ReminderDays) || sub.Status != "trial" || !isValidDateOnly(sub.TrialEndDate) {
+	if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) || sub.Status != "trial" || !isValidDateOnly(sub.TrialEndDate) {
 		return []notificationContentItem{}
 	}
 	reminderDays, ok := effectiveReminderDays(sub, settings)
@@ -344,7 +349,7 @@ func collectRepeatNotificationItems(schedule localScheduleOccurrence, settings a
 	}
 	items := []notificationContentItem{}
 	for _, sub := range subscriptions {
-		if isDisabledReminderDays(sub.ReminderDays) {
+		if !isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.ReminderDays) {
 			// 重复提醒依赖首次提醒窗口；静默订阅不能绕过主通知入口进入重复调度。
 			continue
 		}

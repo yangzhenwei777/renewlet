@@ -8,7 +8,6 @@ vi.mock("./notifications", () => ({
   notificationOverview: vi.fn(),
   notificationRun: vi.fn(),
   notificationTest: vi.fn(),
-  runScheduledNotifications: vi.fn(),
 }));
 
 import { workerProductRouteManifest } from "./index";

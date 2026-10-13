@@ -7,6 +7,7 @@ import {
 } from "@/components/import-preview-list";
 import { toast } from "@/components/ui/sonner";
 import { SETTINGS_QUERY_KEY } from "@/hooks/settings-query-key";
+import { invalidateNotificationOverview } from "@/hooks/notification-query-cache";
 import { invalidateSubscriptionCollections, removeSubscriptionDetails } from "@/hooks/subscription-query-cache";
 import { invalidateUploadedAssetsQueries } from "@/hooks/use-uploaded-assets";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -145,6 +146,7 @@ export function useImportPreviewApply({ onApplied }: UseImportPreviewApplyOption
       removeSubscriptionDetails(queryClient);
       await Promise.all([
         invalidateSubscriptionCollections(queryClient),
+        invalidateNotificationOverview(queryClient),
         queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["custom-config"] }),
         ...assetInvalidations,

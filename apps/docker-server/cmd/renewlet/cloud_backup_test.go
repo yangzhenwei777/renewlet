@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,10 @@ import (
 	"testing"
 	"time"
 )
+
+func cloudBackupStringPtr(value string) *string {
+	return &value
+}
 
 // 云备份后端测试覆盖 provider 级策略、write-only credential 和 manifest 校验，避免 WebDAV/S3 运行面漂移。
 func TestCloudBackupConfigValidationRejectsUnsafeRemotePaths(t *testing.T) {
@@ -28,11 +33,75 @@ func TestCloudBackupConfigValidationRejectsUnsafeRemotePaths(t *testing.T) {
 	s3 := cloudBackupS3Settings{
 		Endpoint:    "https://storage.example.com",
 		Bucket:      "renewlet",
-		Prefix:      "snapshots/..",
+		Prefix:      cloudBackupStringPtr("snapshots/.."),
 		AccessKeyID: "access",
 	}
 	if err := s3.NormalizeAndValidate(); err == nil {
 		t.Fatal("expected S3 parent prefix to be rejected")
+	}
+}
+
+func TestCloudBackupConfigValidationRejectsEndpointCredentialsAndBucketPaths(t *testing.T) {
+	withCredentials := cloudBackupS3Settings{
+		Endpoint: "https://access:secret@storage.example.com",
+		Region:   "auto",
+		Bucket:   "renewlet",
+	}
+	if err := withCredentials.NormalizeAndValidate(); err == nil {
+		t.Fatal("expected S3 endpoint credentials to be rejected")
+	}
+
+	withPath := cloudBackupS3Settings{
+		Endpoint: "https://storage.example.com",
+		Region:   "auto",
+		Bucket:   "renewlet/backups",
+	}
+	if err := withPath.NormalizeAndValidate(); err == nil {
+		t.Fatal("expected S3 bucket path to be rejected")
+	}
+
+	webdav := cloudBackupWebDAVSettings{URL: "https://alice:secret@dav.example.com", Path: "renewlet"}
+	if err := webdav.NormalizeAndValidate(); err == nil {
+		t.Fatal("expected WebDAV endpoint credentials to be rejected")
+	}
+}
+
+func TestCloudBackupS3PrefixPreservesExplicitRootAndDefaultsMissingValue(t *testing.T) {
+	var missing cloudBackupS3Settings
+	if err := json.Unmarshal([]byte(`{"endpoint":"https://storage.example.com","bucket":"renewlet","region":"auto"}`), &missing); err != nil {
+		t.Fatal(err)
+	}
+	if err := missing.NormalizeAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	if missing.Prefix == nil || *missing.Prefix != "renewlet" {
+		t.Fatalf("missing prefix = %#v, want renewlet", missing.Prefix)
+	}
+
+	empty := cloudBackupS3Settings{Endpoint: "https://storage.example.com", Bucket: "renewlet", Region: "auto", Prefix: cloudBackupStringPtr("")}
+	if err := empty.NormalizeAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	if empty.Prefix == nil || *empty.Prefix != "" {
+		t.Fatalf("explicit empty prefix = %#v, want empty string", empty.Prefix)
+	}
+
+	data, err := json.Marshal(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"prefix":""`) {
+		t.Fatalf("serialized empty prefix missing: %s", data)
+	}
+	var roundTrip cloudBackupS3Settings
+	if err := json.Unmarshal(data, &roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if err := roundTrip.NormalizeAndValidate(); err != nil {
+		t.Fatal(err)
+	}
+	if roundTrip.Prefix == nil || *roundTrip.Prefix != "" {
+		t.Fatalf("round-tripped prefix = %#v, want empty string", roundTrip.Prefix)
 	}
 }
 
@@ -101,7 +170,7 @@ func TestCloudBackupConfigValidationRequiresExplicitS3SigningRegion(t *testing.T
 		Endpoint:    "https://storage.example.com",
 		Region:      "",
 		Bucket:      "renewlet",
-		Prefix:      "snapshots",
+		Prefix:      cloudBackupStringPtr("snapshots"),
 		AccessKeyID: "access",
 	}
 	if err := s3.NormalizeAndValidate(); err == nil || err.Error() != "CLOUD_BACKUP_S3_REGION_REQUIRED" {
@@ -130,7 +199,7 @@ func TestCloudBackupConfigDTORedactsCredential(t *testing.T) {
 			cloudBackupProviderS3: {
 				UserID:     "usr_cloud",
 				Provider:   cloudBackupProviderS3,
-				S3:         &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "auto", Bucket: "renewlet", AccessKeyID: "access"},
+				S3:         &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "auto", Bucket: "renewlet", Prefix: cloudBackupStringPtr("renewlet"), AccessKeyID: "access"},
 				Credential: cloudBackupStoredCredential{S3SecretAccessKey: "plain-secret"},
 				Policy:     cloudBackupPolicy{ScheduleFrequency: "weekly", ScheduleTime: "04:30", ScheduleWeekday: "friday", Retention: 9},
 				LastStatus: cloudBackupStatusSuccess,
@@ -167,7 +236,7 @@ func TestCloudBackupUpdateMergesBothProviderConfigsAndWriteOnlyCredentials(t *te
 	nextS3 := targetFromCloudBackupUpdate("usr_cloud", cloudBackupConfigUpdateRequest{
 		Provider: cloudBackupProviderS3,
 		WebDAV:   &cloudBackupWebDAVSettings{URL: "https://dav.example.com/remote.php/dav/files/ignored", Username: "ignored", Path: "ignored"},
-		S3:       &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "us-east-1", Bucket: "renewlet", Prefix: "snapshots", AccessKeyID: "access"},
+		S3:       &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "us-east-1", Bucket: "renewlet", Prefix: cloudBackupStringPtr("snapshots"), AccessKeyID: "access"},
 		Credentials: &cloudBackupCredentialPayload{
 			WebDAVPassword:    &ignoredWebDAVSecret,
 			S3SecretAccessKey: &s3Secret,
@@ -193,7 +262,7 @@ func TestCloudBackupUpdateMergesBothProviderConfigsAndWriteOnlyCredentials(t *te
 	backToWebDAV := targetFromCloudBackupUpdate("usr_cloud", cloudBackupConfigUpdateRequest{
 		Provider: cloudBackupProviderWebDAV,
 		WebDAV:   &cloudBackupWebDAVSettings{URL: "https://dav.example.com/remote.php/dav/files/bob", Username: "bob", Path: "renewlet"},
-		S3:       &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "us-east-1", Bucket: "ignored", Prefix: "ignored", AccessKeyID: "ignored"},
+		S3:       &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "us-east-1", Bucket: "ignored", Prefix: cloudBackupStringPtr("ignored"), AccessKeyID: "ignored"},
 		Credentials: &cloudBackupCredentialPayload{
 			WebDAVPassword:    &emptyWebDAVSecret,
 			S3SecretAccessKey: &ignoredS3Secret,
@@ -267,15 +336,7 @@ func TestVerifyCloudBackupSnapshotBytesRejectsChecksumMismatch(t *testing.T) {
 func TestVerifyCloudBackupSnapshotBytesEnforcesUnifiedSnapshotLimit(t *testing.T) {
 	content := make([]byte, int(cloudBackupSnapshotMaxBytes)+1)
 	allowed := content[:159*(1<<20)/10]
-	allowedHash := sha256.Sum256(allowed)
-	allowedManifest := cloudBackupSnapshotManifest{
-		Kind:                "renewlet-cloud-backup-snapshot",
-		SchemaVersion:       cloudBackupTransportSchemaVersion,
-		SizeBytes:           int64(len(allowed)),
-		SHA256:              hex.EncodeToString(allowedHash[:]),
-		ExportKind:          "renewlet-export",
-		ExportSchemaVersion: renewletExportSchemaVersion,
-	}
+	allowedManifest := cloudBackupManifestForTest("renewlet-export-v1-allowed", allowed)
 	if err := verifyCloudBackupSnapshotBytes(allowed, allowedManifest); err != nil {
 		t.Fatalf("expected 15.9 MiB snapshot to pass, got %v", err)
 	}
@@ -325,7 +386,7 @@ func TestCloudBackupRemoteTargetForProviderDoesNotInspectOtherProvider(t *testin
 			cloudBackupProviderS3: {
 				UserID:     "usr_cloud",
 				Provider:   cloudBackupProviderS3,
-				S3:         &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "auto", Bucket: "renewlet", AccessKeyID: "access"},
+				S3:         &cloudBackupS3Settings{Endpoint: "https://storage.example.com", Region: "auto", Bucket: "renewlet", Prefix: cloudBackupStringPtr("renewlet"), AccessKeyID: "access"},
 				Credential: cloudBackupStoredCredential{},
 				Policy:     defaultCloudBackupPolicy(),
 				LastStatus: cloudBackupStatusIdle,
@@ -346,7 +407,7 @@ func TestCloudBackupRemoteTargetForProviderDoesNotInspectOtherProvider(t *testin
 	}
 }
 
-func TestDownloadCloudBackupSnapshotFromTargetsFallsBackAndAggregatesRawFailures(t *testing.T) {
+func TestDownloadCloudBackupSnapshotFromTargetsFallsBackAndAggregatesStructuredFailures(t *testing.T) {
 	id := "renewlet-export-v1-20260609T000000Z-abcd1234"
 	content := []byte("renewlet")
 	s3 := &fakeCloudBackupRemoteClient{
@@ -354,7 +415,7 @@ func TestDownloadCloudBackupSnapshotFromTargetsFallsBackAndAggregatesRawFailures
 		downloadManifest: cloudBackupManifestForTest(id, content),
 	}
 	got, manifest, err := downloadCloudBackupSnapshotFromTargets(context.Background(), []cloudBackupTarget{
-		{Provider: cloudBackupProviderWebDAV, Client: &fakeCloudBackupRemoteClient{downloadErr: cloudBackupHTTPErrorForTest("CLOUD_BACKUP_WEBDAV_NOT_FOUND", http.StatusNotFound, "<d:error>missing</d:error>")}},
+		{Provider: cloudBackupProviderWebDAV, Client: &fakeCloudBackupRemoteClient{downloadErr: cloudBackupHTTPErrorForTest("CLOUD_BACKUP_WEBDAV_GET_FAILED", http.StatusNotFound, "<d:error>missing</d:error>")}},
 		{Provider: cloudBackupProviderS3, Client: s3},
 	}, id)
 	if err != nil {
@@ -365,18 +426,18 @@ func TestDownloadCloudBackupSnapshotFromTargetsFallsBackAndAggregatesRawFailures
 	}
 
 	_, _, err = downloadCloudBackupSnapshotFromTargets(context.Background(), []cloudBackupTarget{
-		{Provider: cloudBackupProviderWebDAV, Client: &fakeCloudBackupRemoteClient{downloadErr: cloudBackupHTTPErrorForTest("CLOUD_BACKUP_WEBDAV_NOT_FOUND", http.StatusNotFound, "<d:error>missing</d:error>")}},
+		{Provider: cloudBackupProviderWebDAV, Client: &fakeCloudBackupRemoteClient{downloadErr: cloudBackupHTTPErrorForTest("CLOUD_BACKUP_WEBDAV_GET_FAILED", http.StatusNotFound, "<d:error>missing</d:error>")}},
 		{Provider: cloudBackupProviderS3, Client: &fakeCloudBackupRemoteClient{downloadErr: cloudBackupHTTPErrorForTest("CLOUD_BACKUP_S3_GET_FAILED", http.StatusForbidden, "<Error><Code>AccessDenied</Code></Error>")}},
 	}, id)
 	remoteErr := cloudBackupRemoteErrorFrom(err)
-	if remoteErr == nil || remoteErr.details == nil || remoteErr.details.RawResponseText == nil {
-		t.Fatalf("expected raw provider attempt summary, got %#v", err)
+	if remoteErr == nil || remoteErr.details == nil || len(remoteErr.details.Attempts) != 2 {
+		t.Fatalf("expected structured provider attempts, got %#v", err)
 	}
-	if !strings.Contains(*remoteErr.details.RawResponseText, "webdav: CLOUD_BACKUP_WEBDAV_NOT_FOUND") {
-		t.Fatalf("expected WebDAV failure summary, got %#v", *remoteErr.details.RawResponseText)
+	if remoteErr.details.Attempts[0].Code != "CLOUD_BACKUP_WEBDAV_GET_FAILED" {
+		t.Fatalf("expected WebDAV failure summary, got %#v", remoteErr.details.Attempts)
 	}
-	if !strings.Contains(*remoteErr.details.RawResponseText, "s3: CLOUD_BACKUP_S3_GET_FAILED") || !strings.Contains(*remoteErr.details.RawResponseText, "AccessDenied") {
-		t.Fatalf("expected S3 failure summary, got %#v", *remoteErr.details.RawResponseText)
+	if remoteErr.details.Attempts[1].Code != "CLOUD_BACKUP_S3_GET_FAILED" || remoteErr.details.Attempts[1].Details == nil || !strings.Contains(remoteErr.details.Attempts[1].Details.ProviderMessage, "AccessDenied") {
+		t.Fatalf("expected S3 failure summary, got %#v", remoteErr.details.Attempts)
 	}
 }
 
@@ -483,10 +544,13 @@ func cloudBackupManifestForTest(id string, content []byte) cloudBackupSnapshotMa
 }
 
 func cloudBackupHTTPErrorForTest(code string, status int, body string) error {
-	return cloudBackupRemoteHTTPError(code, &http.Response{
-		StatusCode: status,
-		Status:     http.StatusText(status),
-		Header:     http.Header{"content-type": []string{"application/xml"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	})
+	statusValue := status
+	return &cloudBackupRemoteError{
+		code: code,
+		details: cloudBackupRemoteErrorDetails("", "GET", "host=test.example.com; key=test", &cloudBackupProviderResponse{
+			Status:     &statusValue,
+			StatusText: cloudBackupStringPtr(http.StatusText(status)),
+			Body:       cloudBackupStringPtr(body),
+		}, ""),
+	}
 }

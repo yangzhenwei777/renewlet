@@ -19,20 +19,16 @@ func downloadCloudBackupSnapshotFromTargets(ctx context.Context, targets []cloud
 	for _, target := range targets {
 		content, manifest, err := target.Client.Download(ctx, id)
 		if err != nil {
-			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_DOWNLOAD_FAILED", "internal", err))
+			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_LOCAL_DOWNLOAD_FAILED", err))
 			continue
 		}
 		if err := verifyCloudBackupSnapshotBytes(content, manifest); err != nil {
-			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_CHECKSUM_FAILED", "checksum_failed", err))
+			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_CHECKSUM_FAILED", err))
 			continue
 		}
 		return content, manifest, nil
 	}
-	return nil, cloudBackupSnapshotManifest{}, cloudBackupProviderAttemptsError(
-		"CLOUD_BACKUP_DOWNLOAD_FAILED",
-		"No configured cloud backup target returned a valid snapshot.",
-		attempts,
-	)
+	return nil, cloudBackupSnapshotManifest{}, cloudBackupProviderAttemptsError("CLOUD_BACKUP_DOWNLOAD_PROVIDER_RESOLUTION_FAILED", attempts)
 }
 
 func deleteCloudBackupSnapshotWithoutProvider(ctx context.Context, app core.App, userID string, id string) error {
@@ -51,7 +47,7 @@ func deleteCloudBackupSnapshotFromTargets(ctx context.Context, targets []cloudBa
 		manifests, err := target.Client.List(ctx)
 		if err != nil {
 			failedList = true
-			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_LIST_FAILED", "internal", err))
+			attempts = append(attempts, cloudBackupProviderAttemptFromError(target.Provider, "CLOUD_BACKUP_LOCAL_LIST_FAILED", err))
 			continue
 		}
 		if cloudBackupManifestListContains(manifests, id) {
@@ -59,14 +55,12 @@ func deleteCloudBackupSnapshotFromTargets(ctx context.Context, targets []cloudBa
 			attempts = append(attempts, cloudBackupProviderAttempt{
 				Provider: target.Provider,
 				Code:     "CLOUD_BACKUP_SNAPSHOT_FOUND",
-				Message:  "Snapshot exists in this provider.",
 			})
 			continue
 		}
 		attempts = append(attempts, cloudBackupProviderAttempt{
 			Provider: target.Provider,
 			Code:     "CLOUD_BACKUP_SNAPSHOT_NOT_FOUND",
-			Message:  "Snapshot was not listed by this provider.",
 		})
 	}
 	if len(matches) == 1 && !failedList {
@@ -74,17 +68,9 @@ func deleteCloudBackupSnapshotFromTargets(ctx context.Context, targets []cloudBa
 	}
 	if len(matches) > 0 {
 		// 缺 provider 的删除只有在唯一目标可证明时才执行；双目标命中或目标状态未知都必须让调用方显式指定。
-		return cloudBackupProviderAttemptsError(
-			"CLOUD_BACKUP_PROVIDER_REQUIRED",
-			"Snapshot may exist in multiple cloud backup targets. Use provider=webdav or provider=s3.",
-			attempts,
-		)
+		return cloudBackupProviderAttemptsError("CLOUD_BACKUP_PROVIDER_REQUIRED", attempts)
 	}
-	return cloudBackupProviderAttemptsError(
-		"CLOUD_BACKUP_DELETE_FAILED",
-		"No configured cloud backup target listed this snapshot.",
-		attempts,
-	)
+	return cloudBackupProviderAttemptsError("CLOUD_BACKUP_DELETE_PROVIDER_RESOLUTION_FAILED", attempts)
 }
 
 func cloudBackupManifestListContains(manifests []cloudBackupSnapshotManifest, id string) bool {

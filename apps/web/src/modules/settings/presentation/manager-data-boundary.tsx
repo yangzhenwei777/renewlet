@@ -11,6 +11,7 @@ interface ManagerDataBoundaryProps<T> {
   state: SettingsReadState<T>;
   children: ReactNode;
   loading?: ReactNode;
+  errorActions?: ReactNode;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ export function ManagerDataBoundary<T>({
   state,
   children,
   loading,
+  errorActions,
   className,
 }: ManagerDataBoundaryProps<T>) {
   const { t } = useI18n();
@@ -38,6 +40,7 @@ export function ManagerDataBoundary<T>({
       <ManagerReadError
         state={state}
         stale={false}
+        errorActions={errorActions}
         className={cn(MANAGER_READ_ERROR_CLASS_NAME, className)}
       />
     );
@@ -45,7 +48,7 @@ export function ManagerDataBoundary<T>({
 
   return (
     <div className={cn("grid gap-3", className)}>
-      {state.error ? <ManagerReadError state={state} stale className={MANAGER_READ_ERROR_CLASS_NAME} /> : null}
+      {state.error ? <ManagerReadError state={state} stale errorActions={errorActions} className={MANAGER_READ_ERROR_CLASS_NAME} /> : null}
       {state.hasData ? children : null}
     </div>
   );
@@ -54,10 +57,12 @@ export function ManagerDataBoundary<T>({
 function ManagerReadError<T>({
   state,
   stale,
+  errorActions,
   className,
 }: {
   state: SettingsReadState<T>;
   stale: boolean;
+  errorActions?: ReactNode;
   className: string;
 }) {
   const { t } = useI18n();
@@ -66,23 +71,26 @@ function ManagerReadError<T>({
       role="alert"
       className={className}
     >
-      <span className="text-sm text-destructive">
+      <span className="min-w-0 text-sm text-destructive">
         {stale ? t("settings.managerRefreshFailed") : t("settings.managerLoadFailed")}
       </span>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-11 border-border"
-        onClick={() => void state.retry()}
-        disabled={state.isRefreshing}
-        aria-busy={state.isRefreshing ? true : undefined}
-      >
-        <LoadingButtonContent loading={state.isRefreshing} loadingLabel={t("common.loading")}>
-          <RefreshCw className="h-4 w-4" />
-          {t("settings.managerRetry")}
-        </LoadingButtonContent>
-      </Button>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {errorActions}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-11 border-border"
+          onClick={() => void state.retry()}
+          disabled={state.isRefreshing}
+          aria-busy={state.isRefreshing ? true : undefined}
+        >
+          <LoadingButtonContent loading={state.isRefreshing} loadingLabel={t("common.loading")}>
+            <RefreshCw className="h-4 w-4" />
+            {t("settings.managerRetry")}
+          </LoadingButtonContent>
+        </Button>
+      </div>
     </div>
   );
 }

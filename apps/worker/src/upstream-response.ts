@@ -171,10 +171,11 @@ export function redactUpstreamSecrets(value: string, secrets: readonly string[] 
   return redactSignedQueryValues(out);
 }
 
-// WebDAV 的声明仍使用 Node stream，而 Worker 实际使用 Web Stream；两条路径都必须有界读取，不能退回 response.text()。
-export async function readUpstreamResponseBody(response: UpstreamFetchResponse, limitBytes = UPSTREAM_RAW_RESPONSE_TEXT_CAPTURE_MAX_CHARS): Promise<{ text: string; truncated: boolean }> {
+// 协议库可能返回 Web Stream、Node stream 或空响应 Blob；统一有界读取，不能退回整包 response.text()。
+export async function readUpstreamResponseBody(response: Pick<UpstreamFetchResponse, "body">, limitBytes = UPSTREAM_RAW_RESPONSE_TEXT_CAPTURE_MAX_CHARS): Promise<{ text: string; truncated: boolean }> {
   if (!response.body) return { text: "", truncated: false };
   const limit = Math.max(0, Math.floor(limitBytes));
+  if (response.body instanceof Blob) return await readWebReadableBody(response.body.stream(), limit);
   if (isWebReadableBody(response.body)) return await readWebReadableBody(response.body, limit);
   if (isAsyncIterableBody(response.body)) return await readAsyncIterableBody(response.body, limit);
   throw new Error("Unsupported upstream response body");

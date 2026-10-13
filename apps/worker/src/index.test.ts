@@ -1,4 +1,4 @@
-// Worker scheduled 入口测试保护自动续订、通知和云备份三阶段隔离，避免单阶段失败拖垮整轮 Cron。
+// scheduled只执行一个持久工作片；账号内阶段依赖与失败轮转由真实D1集成测试保护。
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "./index";
 import type { Env } from "./types";
@@ -6,21 +6,16 @@ import type { Env } from "./types";
 type ScheduledTask = () => Promise<unknown>;
 
 const phaseMocks = vi.hoisted(() => ({
-  renewAutoSubscriptionsForAllUsers: vi.fn<ScheduledTask>(),
-  runScheduledNotifications: vi.fn<ScheduledTask>(),
-  runDueCloudBackups: vi.fn<ScheduledTask>(),
+  runCronTick: vi.fn<ScheduledTask>(),
   consumeBuiltInIconIndexRefreshQueue: vi.fn(),
 }));
 
-vi.mock("./subscription-renewal", () => ({
-  renewAutoSubscriptionsForAllUsers: phaseMocks.renewAutoSubscriptionsForAllUsers,
-}));
+vi.mock("./cron", () => ({ runCronTick: phaseMocks.runCronTick }));
 
 vi.mock("./notifications", () => ({
   notificationHistory: vi.fn(),
   notificationRun: vi.fn(),
   notificationTest: vi.fn(),
-  runScheduledNotifications: phaseMocks.runScheduledNotifications,
 }));
 
 vi.mock("./cloud-backup", () => ({
@@ -29,7 +24,6 @@ vi.mock("./cloud-backup", () => ({
   downloadCloudBackup: vi.fn(),
   listCloudBackups: vi.fn(),
   readCloudBackupConfig: vi.fn(),
-  runDueCloudBackups: phaseMocks.runDueCloudBackups,
   testCloudBackupConfig: vi.fn(),
   updateCloudBackupConfig: vi.fn(),
 }));
@@ -70,70 +64,19 @@ async function runQueue(batch: MessageBatch, env: Env = envFixture()): Promise<v
 describe("Cloudflare worker scheduled entrypoint", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    phaseMocks.renewAutoSubscriptionsForAllUsers.mockReset();
-    phaseMocks.runScheduledNotifications.mockReset();
-    phaseMocks.runDueCloudBackups.mockReset();
+    phaseMocks.runCronTick.mockReset();
     phaseMocks.consumeBuiltInIconIndexRefreshQueue.mockReset();
-    phaseMocks.renewAutoSubscriptionsForAllUsers.mockResolvedValue(undefined);
-    phaseMocks.runScheduledNotifications.mockResolvedValue(undefined);
-    phaseMocks.runDueCloudBackups.mockResolvedValue(undefined);
+    phaseMocks.runCronTick.mockResolvedValue(undefined);
   });
 
-  it("runs scheduled phases in the required order", async () => {
-    const events: string[] = [];
-    phaseMocks.renewAutoSubscriptionsForAllUsers.mockImplementation(async () => {
-      events.push("renew");
-    });
-    phaseMocks.runScheduledNotifications.mockImplementation(async () => {
-      events.push("notifications");
-    });
-    phaseMocks.runDueCloudBackups.mockImplementation(async () => {
-      events.push("backups");
-    });
-
+  it("awaits one durable work unit", async () => {
     await runScheduled();
-
-    expect(events).toEqual(["renew", "notifications", "backups"]);
+    expect(phaseMocks.runCronTick).toHaveBeenCalledTimes(1);
   });
 
-  it("continues later scheduled phases after automatic renewal fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    phaseMocks.renewAutoSubscriptionsForAllUsers.mockRejectedValueOnce(new Error("database locked Authorization: Bearer abc.def?sendkey=SCTsecret"));
-
-    await expect(runScheduled()).resolves.toBeUndefined();
-
-    expect(phaseMocks.runScheduledNotifications).toHaveBeenCalledTimes(1);
-    expect(phaseMocks.runDueCloudBackups).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith("scheduled_phase_failed", expect.objectContaining({
-      event: "scheduled_phase_failed",
-      phase: "auto_renew_subscriptions",
-      error: expect.objectContaining({ name: "Error", message: expect.stringContaining("[redacted]") }),
-    }));
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("abc.def");
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("SCTsecret");
-  });
-
-  it("continues cloud backups after notification scheduling fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    phaseMocks.runScheduledNotifications.mockRejectedValueOnce(new Error("notify failed SCTsecret"));
-
-    await expect(runScheduled()).resolves.toBeUndefined();
-
-    expect(phaseMocks.renewAutoSubscriptionsForAllUsers).toHaveBeenCalledTimes(1);
-    expect(phaseMocks.runDueCloudBackups).toHaveBeenCalledTimes(1);
-    expect(errorSpy).toHaveBeenCalledWith("scheduled_phase_failed", expect.objectContaining({
-      event: "scheduled_phase_failed",
-      phase: "notifications",
-      error: { name: "Error", message: "notify failed [redacted]" },
-    }));
-  });
-
-  it("skips every scheduled phase while maintenance mode is active", async () => {
+  it("does not start work during maintenance", async () => {
     await runScheduled(envFixture({ RENEWLET_MAINTENANCE_MODE: "true" }));
-
-    expect(phaseMocks.renewAutoSubscriptionsForAllUsers).not.toHaveBeenCalled();
-    expect(phaseMocks.runScheduledNotifications).not.toHaveBeenCalled();
-    expect(phaseMocks.runDueCloudBackups).not.toHaveBeenCalled();
+    expect(phaseMocks.runCronTick).not.toHaveBeenCalled();
   });
 });
 

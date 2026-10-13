@@ -315,8 +315,8 @@ func aiRecognitionConfigContextForUser(app core.App, userID string, locale appLo
 		return aiRecognitionConfigContext{}, err
 	}
 	return aiRecognitionConfigContext{
-		Categories:     aiRecognitionConfigOptions(config.Categories, locale),
-		PaymentMethods: aiRecognitionConfigOptions(config.PaymentMethods, locale),
+		Categories:     aiRecognitionConfigOptions(config.Categories, locale, calendarFeedBuiltInCategoryLabelKey),
+		PaymentMethods: aiRecognitionConfigOptions(config.PaymentMethods, locale, calendarFeedBuiltInPaymentMethodLabelKey),
 		Tags:           tags,
 	}, nil
 }
@@ -354,27 +354,18 @@ func aiRecognitionExistingTagsForUser(app core.App, userID string) ([]string, er
 	return tags, nil
 }
 
-func aiRecognitionConfigOptions(items []customConfigItem, locale appLocale) []aiRecognitionConfigOption {
+func aiRecognitionConfigOptions(items []customConfigItem, locale appLocale, builtInLabelKey func(string) (string, bool)) []aiRecognitionConfigOption {
 	out := make([]aiRecognitionConfigOption, 0, len(items))
 	for _, item := range items {
+		key, _ := builtInLabelKey(item.Value)
 		out = append(out, aiRecognitionConfigOption{
 			Value: item.Value,
-			Label: localizedAIRecognitionConfigLabel(item.Labels, locale),
+			Label: localizedCustomConfigLabel(item.Labels, locale, key),
 			ZhCN:  item.Labels.ZhCN,
 			EnUS:  item.Labels.EnUS,
 		})
 	}
 	return out
-}
-
-func localizedAIRecognitionConfigLabel(labels customConfigLabels, locale appLocale) string {
-	if locale == localeEnUS && labels.EnUS != "" {
-		return labels.EnUS
-	}
-	if labels.ZhCN != "" {
-		return labels.ZhCN
-	}
-	return labels.EnUS
 }
 
 func aiRecognitionJSONError(e *core.RequestEvent, status int, message string, code string, reason string, err error, _ *aiRecognitionDiagnostics) error {

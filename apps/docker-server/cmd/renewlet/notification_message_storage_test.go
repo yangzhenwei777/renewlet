@@ -86,7 +86,7 @@ func TestNotificationHistoryBrowserFixture(test *testing.T) {
 			if job == nil {
 				return fmt.Errorf("browser notification fixture %d already exists", index)
 			}
-			if err := finalizeNotificationJob(txApp, job, userID, schedule, notificationStatusFailed, errorText, result); err != nil {
+			if _, err := finalizeNotificationJob(txApp, job, userID, schedule, notificationStatusFailed, errorText, result); err != nil {
 				return err
 			}
 			expectedMessages[job.Id] = result.Message
@@ -126,7 +126,7 @@ func TestNotificationLargeHistoryPreservesCompleteMessage(t *testing.T) {
 			}
 			t.Logf("items=%d complete result bytes=%d", size, len(payload))
 			// 最终状态保存不能受消息条数影响；历史正文必须保留发送时快照，不能截断或从当前订阅重建。
-			if err := finalizeNotificationJob(app, record, user.Id, schedule, notificationStatusSent, "", result); err != nil {
+			if _, err := finalizeNotificationJob(app, record, user.Id, schedule, notificationStatusSent, "", result); err != nil {
 				t.Fatal(err)
 			}
 			history := requestNotificationHistory(t, app, token)
@@ -162,10 +162,14 @@ func TestNotificationMessageReplacementRollsBack(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusFailed, "old failure", result); err != nil {
+			if _, err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusFailed, "old failure", result); err != nil {
 				t.Fatal(err)
 			}
 			before, err := loadNotificationHistoryJobs(app, user.Id, "all", 1, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err = app.FindRecordById("notification_jobs", job.Id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -177,7 +181,7 @@ func TestNotificationMessageReplacementRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			// 同时保护分段写入中断和最终态写入失败；不能只回滚其中一张表。
-			if err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusSent, "", largeNotificationJobResult(5000)); err == nil || !strings.Contains(err.Error(), "injected snapshot failure") {
+			if _, err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusSent, "", largeNotificationJobResult(5000)); err == nil || !strings.Contains(err.Error(), "injected snapshot failure") {
 				t.Fatalf("expected original failure: %v", err)
 			}
 			after, err := loadNotificationHistoryJobs(app, user.Id, "all", 1, 0)
@@ -201,10 +205,10 @@ func TestNotificationMessageOwnershipAndDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := finalizeNotificationJob(app, job, other.Id, schedule, notificationStatusSent, "", result); err == nil {
+	if _, err := finalizeNotificationJob(app, job, other.Id, schedule, notificationStatusSent, "", result); err == nil {
 		t.Fatal("accepted other user's job")
 	}
-	if err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusSent, "", result); err != nil {
+	if _, err := finalizeNotificationJob(app, job, user.Id, schedule, notificationStatusSent, "", result); err != nil {
 		t.Fatal(err)
 	}
 	if len(requestNotificationHistory(t, app, otherToken).Jobs) != 0 || len(requestNotificationHistory(t, app, token).Jobs) != 1 {
@@ -228,65 +232,73 @@ func TestNotificationMessageOwnershipAndDeletion(t *testing.T) {
 }
 
 func TestNotificationCronLargeBatchRetriesOnlyFailedChannel(t *testing.T) {
-	app := newSchemaTestApp(t)
-	if err := ensureSchema(app); err != nil {
-		t.Fatal(err)
-	}
-	registerRecordHooks(app)
-	user, token := createRouteTestUser(t, app, "authenticated")
-	settings := defaultAppSettings()
-	settings.Timezone = "UTC"
-	settings.NotificationTimeLocal = "08:00"
-	settings.NotificationReminderDays = 3
-	settings.EnabledChannels = []string{"webhook", "telegram"}
-	settings.WebhookURL = "https://example.com/notification"
-	settings.TelegramBotToken = "123:fixture"
-	settings.TelegramChatID = "123"
-	createNotificationCronRouteTestSettings(t, app, user, settings)
-	if err := app.RunInTransaction(func(txApp core.App) error {
-		for index := 0; index < 1000; index++ {
-			createRouteTestSubscription(t, txApp, user.Id, map[string]interface{}{"name": fmt.Sprintf("Large batch %d", index), "autoRenew": false, "nextBillingDate": "2026-09-11", "reminderDays": 3})
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	webhookCalls, telegramCalls := 0, 0
-	failTelegram := true
-	restore := withNotificationHTTPClient(t, serverChanRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Host == "example.com" {
-			webhookCalls++
-			return serverChanTestResponse(http.StatusOK, `{}`), nil
-		}
-		if request.URL.Host != "api.telegram.org" {
-			t.Fatalf("unexpected external request %s", request.URL.Host)
-		}
-		telegramCalls++
-		if failTelegram {
-			return serverChanTestResponse(http.StatusBadRequest, `{"ok":false,"description":"fixture failure"}`), nil
-		}
-		return serverChanTestResponse(http.StatusOK, `{"ok":true}`), nil
-	}))
-	defer restore()
-	options := notificationCronOptions{Now: time.Date(2026, 9, 8, 8, 0, 0, 0, time.UTC), WindowMinutes: 2, MaxRetries: 3, StaleSendingMinutes: 15}
-	refreshNotificationSchedulerForTest(t, app, user.Id, options.Now)
-	first, err := runNotificationCron(app, options)
-	if err != nil || first.Failed != 1 {
-		t.Fatalf("first run: %+v %v", first, err)
-	}
-	failTelegram = false
-	second, err := runNotificationCron(app, options)
-	if err != nil || second.Sent != 1 {
-		t.Fatalf("retry run: %+v %v", second, err)
-	}
-	completedTelegramCalls := telegramCalls
-	third, err := runNotificationCron(app, options)
-	if err != nil || third.Sent != 0 || third.Failed != 0 || webhookCalls != 1 || telegramCalls != completedTelegramCalls {
-		t.Fatalf("successful channel resent: webhook=%d telegram=%d result=%+v err=%v", webhookCalls, telegramCalls, third, err)
-	}
-	history := requestNotificationHistory(t, app, token)
-	if len(history.Jobs) != 1 || len(assertNormalizedCronResult(t, history.Jobs[0]).Message.Items) != 1000 {
-		t.Fatal("large cron lost history items")
+	for _, retryStatus := range []string{notificationStatusFailed, notificationStatusSending} {
+		t.Run(retryStatus, func(t *testing.T) {
+			withSafeOutboundResolver(t)
+			app := newSchemaTestApp(t)
+			if err := ensureSchema(app); err != nil {
+				t.Fatal(err)
+			}
+			registerRecordHooks(app)
+			user, token := createRouteTestUser(t, app, "authenticated")
+			settings := defaultAppSettings()
+			settings.Timezone = "UTC"
+			settings.NotificationTimeLocal = "08:00"
+			settings.NotificationReminderDays = 3
+			settings.EnabledChannels = []string{"webhook", "telegram"}
+			settings.WebhookURL = "https://example.com/notification"
+			settings.TelegramBotToken = "123:fixture"
+			settings.TelegramChatID = "123"
+			createNotificationCronRouteTestSettings(t, app, user, settings)
+			if err := app.RunInTransaction(func(txApp core.App) error {
+				for index := 0; index < 1000; index++ {
+					createRouteTestSubscription(t, txApp, user.Id, map[string]interface{}{"name": fmt.Sprintf("Large batch %d", index), "autoRenew": false, "nextBillingDate": "2026-09-11", "reminderDays": 3})
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			webhookCalls, telegramCalls := 0, 0
+			failTelegram := true
+			restore := withNotificationHTTPClient(t, serverChanRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Host == "example.com" {
+					webhookCalls++
+					return serverChanTestResponse(http.StatusOK, `{}`), nil
+				}
+				if request.URL.Host != "api.telegram.org" {
+					t.Fatalf("unexpected external request %s", request.URL.Host)
+				}
+				telegramCalls++
+				if failTelegram {
+					return serverChanTestResponse(http.StatusBadRequest, `{"ok":false,"description":"fixture failure"}`), nil
+				}
+				return serverChanTestResponse(http.StatusOK, `{"ok":true}`), nil
+			}))
+			defer restore()
+			options := notificationCronOptions{Now: time.Date(2026, 9, 8, 8, 0, 0, 0, time.UTC), WindowMinutes: 2, MaxRetries: 3, StaleSendingMinutes: 15}
+			refreshNotificationSchedulerForTest(t, app, user.Id, options.Now)
+			first, err := runNotificationCron(app, options)
+			if err != nil || first.Failed != 1 {
+				t.Fatalf("first run: %+v %v", first, err)
+			}
+			if _, err := app.DB().NewQuery("UPDATE notification_jobs SET status = {:status}, updated = '2026-09-08 07:00:00.000Z' WHERE user = {:user}").Bind(dbx.Params{"status": retryStatus, "user": user.Id}).Execute(); err != nil {
+				t.Fatal(err)
+			}
+			failTelegram = false
+			second, err := runNotificationCron(app, options)
+			if err != nil || second.Sent != 1 {
+				t.Fatalf("retry run: %+v %v", second, err)
+			}
+			completedTelegramCalls := telegramCalls
+			third, err := runNotificationCron(app, options)
+			if err != nil || third.Sent != 0 || third.Failed != 0 || webhookCalls != 1 || telegramCalls != completedTelegramCalls {
+				t.Fatalf("successful channel resent: webhook=%d telegram=%d result=%+v err=%v", webhookCalls, telegramCalls, third, err)
+			}
+			history := requestNotificationHistory(t, app, token)
+			if len(history.Jobs) != 1 || len(assertNormalizedCronResult(t, history.Jobs[0]).Message.Items) != 1000 {
+				t.Fatal("large cron lost history items")
+			}
+		})
 	}
 }
 

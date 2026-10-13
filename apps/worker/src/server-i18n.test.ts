@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import localeFixtures from "../../../packages/shared/src/contract-fixtures/server-locale-resolution.json";
 import { accountContentLocale, requestLocale } from "./server-i18n";
 
 function localeRequest(headers: HeadersInit = {}): Request {
@@ -23,27 +24,14 @@ describe("server locale resolution", () => {
     },
   );
 
-  it.each([
-    ["", "en-US"],
-    ["en-US;q=0.7, zh-CN;q=0.9", "zh-CN"],
-    ["fr-FR, en;q=0.8", "en-US"],
-    ["en-GB, zh-CN;q=0.2", "en-US"],
-    ["en-US;q=0, zh-Hant;q=0.8", "zh-CN"],
-    ["zh-CN;q=0.8junk, en-US;q=0.7", "en-US"],
-    ["zh-CN;q=1.1, en-US;q=0.4", "en-US"],
-    ["zh-CN;q=NaN, en-US;q=0.4", "en-US"],
-    ["zh-CN;q=0x1, en-US;q=0.4", "en-US"],
-    ["zh-CN;q=0.1234, en-US;q=0.4", "en-US"],
-    ["zh-$$$;q=0.9, en-US;q=0.8", "en-US"],
-    ["*;q=0.9, zh-CN;q=0.8", "en-US"],
-    ["zh-CN;q=0.5, en-US;q=0.5", "zh-CN"],
-  ] as const)("resolves Accept-Language %j as %s", (acceptLanguage, expected) => {
-    expect(requestLocale(localeRequest({ "Accept-Language": acceptLanguage }))).toBe(expected);
+  it.each(localeFixtures)("resolves Accept-Language $name", ({ header, expected }) => {
+    expect(requestLocale(localeRequest({ "Accept-Language": header }))).toBe(expected);
   });
 
   it("uses explicit account preferences and English for auto background content", () => {
     expect(accountContentLocale("zh-CN")).toBe("zh-CN");
     expect(accountContentLocale("en-US")).toBe("en-US");
+    expect(accountContentLocale("ru-RU")).toBe("ru-RU");
     expect(accountContentLocale("auto")).toBe("en-US");
   });
 });

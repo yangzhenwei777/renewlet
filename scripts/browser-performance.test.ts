@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IMPORT_APPLY_SUBSCRIPTION_LIMIT, importApplyRequestSchema } from "../packages/shared/src/schemas/import-export";
+import { IMPORT_APPLY_SUBSCRIPTION_LIMIT, importApplyRequestSchema } from "@renewlet/shared/schemas/import-export";
 import {
   comparePerformanceReports, performanceFixture, performanceInteractions, performancePages,
-  performanceReportSchema, performanceSampleCount, sha256, summarize, summarizeReport,
-  type PerformanceReport, type PerformanceSample,
+  performanceReportSchema, performanceSampleCount, sha256, summarize, summarizeLabVitals, summarizeReport,
+  type LabVitalsSample, type PerformanceReport, type PerformanceSample,
 } from "./browser-performance";
 import { serverDiagnosticFailures } from "./server-diagnostics";
 
 function report(): PerformanceReport {
   const samples: PerformanceSample[] = [];
+  const labVitals: LabVitalsSample[] = [];
   for (const project of ["performance-desktop", "performance-mobile"]) {
     const scenarios = [
       ...performancePages.flatMap((scenario) => [
@@ -29,9 +30,29 @@ function report(): PerformanceReport {
         });
       }
     }
+    for (const scenario of performancePages) {
+      for (const cache of ["cold-document", "warm-document"] as const) {
+        for (let iteration = 0; iteration < performanceSampleCount; iteration += 1) {
+          labVitals.push({
+            project, scenario, cache, iteration, browser: "fixture-chromium", viewport: { width: 1280, height: 720 },
+            journey: "load-route;navigate-away;hide-document", errors: [],
+            vitals: { lcpMs: 120, inpMs: 24, cls: 0.01, timeOrigin: 1, visibility: "hidden" },
+            resources: { rendererTaskCpuMs: 50, jsHeapUsedBytes: 1_000_000 },
+          });
+        }
+      }
+    }
   }
   return {
-    version: 6, artifactHash: "artifact", status: "passed", samples, failures: [],
+    version: 7, artifactHash: "artifact", status: "passed", samples, failures: [], labVitals,
+    build: {
+      version: 1, status: "passed", durationMs: 2000, artifactHash: "artifact",
+      bundle: {
+        budgets: { startup: { gzip: 400000, brotli: 344000 }, route: { gzip: 400000, brotli: 345000 } },
+        startup: [{ locale: "zh-CN", files: ["assets/index.js"], gzip: 1000, brotli: 900 }],
+        routes: [{ key: "src/pages/dashboard.tsx", files: ["assets/dashboard.js"], gzip: 1000, brotli: 900 }],
+      },
+    },
     environment: {
       revision: "revision", worktreeHash: "tree", lockHash: "lock", node: "node", packageManager: "pnpm", go: "go",
       host: "host", os: "os", cpu: "cpu", architecture: "arch", fixtureDay: "2026-09-07", fixtureHash: "fixture",
@@ -44,12 +65,15 @@ function report(): PerformanceReport {
 test("summaries keep cold and warm groups separate and use median and nearest-rank P75", () => {
   assert.deepEqual(summarize([10, 4, 1, 5, 3, 7, 6, 9, 8, 2]), { count: 10, median: 5.5, p75: 8 });
   assert.equal(Object.keys(summarizeReport(report())).length, 38);
+  const vitals = summarizeLabVitals(report());
+  assert.equal(Object.keys(vitals).length, 20);
+  assert.deepEqual(vitals["performance-desktop/dashboard/cold-document"]?.["inpMs"], { count: 10, median: 24, p75: 24 });
   assert.throws(() => summarize([1, 2]), /at least 10/);
   assert.throws(() => summarize(Array.from({ length: 10 }, () => Number.NaN)), /finite/);
 });
 
 test("native content-ready measurements reject retired clock and polling formats", () => {
-  for (const version of [1, 2, 3, 4, 5]) assert.equal(performanceReportSchema.safeParse({ ...report(), version }).success, false);
+  for (const version of [1, 2, 3, 4, 5, 6]) assert.equal(performanceReportSchema.safeParse({ ...report(), version }).success, false);
   const missingWarmDocument = report();
   missingWarmDocument.samples = missingWarmDocument.samples.filter((sample) => sample.cache !== "warm-document");
   assert.throws(() => summarizeReport(missingWarmDocument), /warm-document/);
@@ -86,11 +110,56 @@ test("comparison rejects different environments and requires remeasurement above
   candidate.environment.revision = "candidate";
   candidate.environment.worktreeHash = "candidate-tree";
   candidate.artifactHash = "candidate-artifact";
+  if (!candidate.build) throw new Error("Missing build fixture");
+  candidate.build.artifactHash = candidate.artifactHash;
   assert.deepEqual(comparePerformanceReports(baseline, candidate).regressions, []);
   for (const sample of candidate.samples) if (sample.metrics) sample.metrics.durationMs = 111;
   assert.equal(comparePerformanceReports(baseline, candidate).regressions.length, 76);
   candidate.environment.fixtureHash = "different-data";
   assert.throws(() => comparePerformanceReports(baseline, candidate), /environments/);
+});
+
+test("document vitals reject missing groups, duplicate samples and absent metrics without substituting zero", () => {
+  for (const corrupt of [
+    (value: PerformanceReport) => { value.status = "failed"; },
+    (value: PerformanceReport) => { value.failures.push("console warning"); },
+    (value: PerformanceReport) => { value.labVitals.pop(); },
+    (value: PerformanceReport) => { const sample = value.labVitals[0]; if (sample) value.labVitals.push(sample); },
+    (value: PerformanceReport) => { const sample = value.labVitals[0]; if (sample) sample.iteration = 1; },
+    (value: PerformanceReport) => { const sample = value.labVitals[0]; if (sample) sample.errors.push("visibility failure"); },
+    (value: PerformanceReport) => { const sample = value.labVitals[0]; if (sample) sample.resources = null; },
+    (value: PerformanceReport) => { const sample = value.labVitals[0]; if (sample) sample.vitals = null; },
+    ...(["lcpMs", "inpMs", "cls"] as const).map((metric) => (value: PerformanceReport) => {
+      const sample = value.labVitals[0];
+      if (sample?.vitals) sample.vitals[metric] = null;
+    }),
+  ]) {
+    const value = report();
+    corrupt(value);
+    assert.throws(() => summarizeLabVitals(value));
+    assert.throws(() => comparePerformanceReports(report(), value));
+  }
+});
+
+test("vitals configuration and build evidence must belong to the compared run", () => {
+  const missingBuild = report();
+  missingBuild.build = null;
+  assert.throws(() => comparePerformanceReports(report(), missingBuild), /performance build/);
+  const changedArtifact = report();
+  changedArtifact.artifactHash = "different";
+  assert.throws(() => comparePerformanceReports(report(), changedArtifact), /performance build/);
+  for (const change of ["browser", "viewport"] as const) {
+    const candidate = report();
+    const sample = candidate.labVitals[0];
+    if (!sample) throw new Error("Missing vitals fixture");
+    if (change === "browser") sample.browser = "different-browser";
+    else sample.viewport.width += 1;
+    assert.throws(() => comparePerformanceReports(report(), candidate), /Vitals browser, viewport/);
+  }
+  const comparison = comparePerformanceReports(report(), report());
+  assert.equal(comparison.build.before?.durationMs, 2000);
+  assert.deepEqual(comparison.build.after?.bundle, report().build?.bundle);
+  assert.equal(Object.keys(comparison.labVitals.before).length, 20);
 });
 
 test("browser differences and malformed metrics are not silently compared", () => {

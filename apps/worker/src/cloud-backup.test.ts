@@ -3,11 +3,16 @@ import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import type { CloudBackupProvider, CloudBackupSnapshotManifest } from "@renewlet/shared/schemas/cloud-backup";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  emptyWebDAVMultiStatus,
+  fetchCallFromArgs,
+  stubRemoteSuccessFetch,
+} from "./cloud-backup-test-fixtures";
+import {
   createCloudBackup,
   deleteCloudBackup,
   downloadCloudBackup,
   listCloudBackups,
-  runDueCloudBackups,
+  readCloudBackupConfig,
   testCloudBackupConfig,
   updateCloudBackupConfig,
 } from "./cloud-backup";
@@ -18,7 +23,12 @@ import { readSuccessData } from "./api-test-helpers";
 import { HttpError } from "./http";
 import type { CloudBackupTargetRow, Env, UserRow } from "./types";
 
+type CloudBackupRemoteErrorMatch = Omit<Partial<CloudBackupRemoteError>, "details"> & {
+  details?: Partial<NonNullable<CloudBackupRemoteError["details"]>>;
+};
+
 const authUser = userRow();
+
 
 const authMocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
@@ -159,6 +169,7 @@ function cloudBackupRow(provider: "webdav" | "s3", overrides: Partial<CloudBacku
             region: "auto",
             bucket: "renewlet",
             prefix: "snapshots",
+            addressingStyle: "auto",
             accessKeyId: "access-key",
           },
         }),
@@ -182,6 +193,7 @@ function cloudBackupRow(provider: "webdav" | "s3", overrides: Partial<CloudBacku
 function s3CloudBackupRow(overrides: Partial<{
   endpoint: string;
   bucket: string;
+  prefix: string;
 }> = {}): CloudBackupTargetRow {
   return cloudBackupRow("s3", {
     config_json: JSON.stringify({
@@ -189,8 +201,9 @@ function s3CloudBackupRow(overrides: Partial<{
         endpoint: overrides.endpoint ?? "https://r2.example.com",
         region: "auto",
         bucket: overrides.bucket ?? "renewlet",
-        prefix: "snapshots",
+        prefix: overrides.prefix ?? "snapshots",
         accessKeyId: "access-key",
+        addressingStyle: "auto",
       },
     }),
   });
@@ -242,8 +255,10 @@ function fakeCloudBackupTarget(provider: CloudBackupProvider, manifests: CloudBa
     list: async () => manifests,
     upload: async () => undefined,
     download: async () => {
-      throw new CloudBackupRemoteError("CLOUD_BACKUP_DOWNLOAD_FAILED", {
-        rawResponseText: "not implemented",
+      throw new CloudBackupRemoteError("CLOUD_BACKUP_LOCAL_DOWNLOAD_FAILED", {
+        operation: "GetObject",
+        target: "test",
+        clientMessage: "not implemented",
       });
     },
     delete: async () => {
@@ -251,34 +266,6 @@ function fakeCloudBackupTarget(provider: CloudBackupProvider, manifests: CloudBa
     },
   };
   return { provider, client };
-}
-
-function fetchCallFromArgs(input: RequestInfo | URL, init?: RequestInit) {
-  const request = input instanceof Request ? input : null;
-  return {
-    href: input instanceof URL ? input.toString() : request?.url ?? String(input),
-    method: init?.method ?? request?.method ?? "GET",
-    headers: new Headers(init?.headers ?? request?.headers),
-  };
-}
-
-function stubRemoteSuccessFetch(): string[] {
-  const calls: string[] = [];
-  vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const { href, method } = fetchCallFromArgs(url, init);
-    calls.push(`${method} ${href}`);
-    if (method === "MKCOL") return new Response("", { status: 201 });
-    if (method === "PROPFIND") return new Response(emptyWebDAVMultiStatus(), { status: 207 });
-    if (href.includes("list-type=2")) return new Response(`<?xml version="1.0"?><ListBucketResult></ListBucketResult>`, { status: 200 });
-    if (method === "HEAD") return new Response(null, { status: 200 });
-    return new Response("", { status: 200 });
-  }));
-  return calls;
-}
-
-// WebDAV SDK 会解析 PROPFIND 结构而不是正则捞 href；成功 fixture 必须像真实服务一样返回 collection propstat。
-function emptyWebDAVMultiStatus(): string {
-  return `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/remote.php/dav/files/alice/renewlet/</d:href><d:propstat><d:prop><d:displayname>renewlet</d:displayname><d:resourcetype><d:collection/></d:resourcetype><d:getcontentlength>0</d:getcontentlength><d:getlastmodified>Wed, 10 Jun 2026 00:00:00 GMT</d:getlastmodified></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`;
 }
 
 beforeEach(() => {
@@ -361,7 +348,7 @@ describe("Cloudflare cloud backup", () => {
           endpoint: "https://r2.example.com",
           region: "auto",
           bucket: "renewlet",
-          prefix: "snapshots",
+          prefix: "",
           accessKeyId: "access",
         },
         credentials: { webdavPassword: "ignored-webdav-secret", s3SecretAccessKey: "s3-secret" },
@@ -387,11 +374,23 @@ describe("Cloudflare cloud backup", () => {
     expect(rows.find((row) => row.provider === "s3")?.credential_json).toContain("s3-secret");
     expect(JSON.stringify(rows.find((row) => row.provider === "s3"))).not.toContain("ignored-webdav-secret");
     expect(body.config.credentialSetByProvider).toEqual({ webdav: true, s3: true });
-    expect(body.config.s3).not.toHaveProperty("addressingStyle");
+    expect(body.config.s3?.["addressingStyle"]).toBe("auto");
+    expect(body.config.s3).toMatchObject({ prefix: "" });
+    expect(rows.find((row) => row.provider === "s3")?.config_json).toContain('"prefix":""');
     expect(body.config.policyByProvider.webdav).toMatchObject({ scheduleTime: "02:15", retention: 5 });
     expect(body.config.policyByProvider.s3).toMatchObject({ scheduleTime: "04:30", scheduleWeekday: "friday", retention: 9 });
   });
-
+  it("defaults a legacy D1 S3 row without prefix in memory without rewriting the row", async () => {
+    const rows = [cloudBackupRow("s3", { config_json: JSON.stringify({ s3: {
+      endpoint: "https://r2.example.com", region: "auto", bucket: "renewlet", accessKeyId: "access-key", addressingStyle: "auto",
+    } }) })];
+    const originalConfig = rows[0]!.config_json;
+    const response = await readCloudBackupConfig(authorizedRequest("/api/app/cloud-backup/config"), fakeEnvForRows(rows));
+    const body = await readSuccessData<{ config: { s3?: { prefix: string; addressingStyle: string } } }>(response);
+    expect(body.config.s3?.prefix).toBe("renewlet");
+    expect(body.config.s3?.addressingStyle).toBe("auto");
+    expect(rows[0]!.config_json).toBe(originalConfig);
+  });
   it("creates manual snapshots only for the requested provider", async () => {
     const rows = [cloudBackupRow("webdav"), s3CloudBackupRow()];
     const env = fakeEnvForRows(rows);
@@ -450,7 +449,8 @@ describe("Cloudflare cloud backup", () => {
       status: 400,
       code: "CLOUD_BACKUP_PROVIDER_INVALID",
       details: {
-        rawResponseText: expect.stringContaining("\"provider\":\"webdav\""),
+        operation: "request-validation",
+        clientMessage: expect.stringContaining("\"provider\":\"webdav\""),
       },
     });
   });
@@ -532,13 +532,14 @@ describe("Cloudflare cloud backup", () => {
 
     expect(error).toMatchObject({
       status: 400,
-      code: "CLOUD_BACKUP_DOWNLOAD_FAILED",
+      code: "CLOUD_BACKUP_DOWNLOAD_PROVIDER_RESOLUTION_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("webdav: CLOUD_BACKUP_WEBDAV_NOT_FOUND"),
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ provider: "webdav", code: expect.any(String) }),
+          expect.objectContaining({ provider: "s3", code: "CLOUD_BACKUP_S3_GET_FAILED" }),
+        ]),
       },
     } satisfies Partial<HttpError>);
-    const rawResponseText = (error?.details as { rawResponseText?: string } | undefined)?.rawResponseText ?? "";
-    expect(rawResponseText).toContain("s3: CLOUD_BACKUP_S3_GET_FAILED");
     expect(JSON.stringify(error?.details)).toContain("AccessDenied");
   });
 
@@ -554,7 +555,8 @@ describe("Cloudflare cloud backup", () => {
       status: 400,
       code: "CLOUD_BACKUP_PROVIDER_INVALID",
       details: {
-        rawResponseText: "Use provider=webdav or provider=s3.",
+        operation: "request-validation",
+        clientMessage: "Use provider=webdav or provider=s3.",
       },
     });
   });
@@ -579,9 +581,12 @@ describe("Cloudflare cloud backup", () => {
     expect(error).toMatchObject({
       code: "CLOUD_BACKUP_PROVIDER_REQUIRED",
       details: {
-        rawResponseText: expect.stringContaining("Snapshot may exist in multiple cloud backup targets."),
+        attempts: expect.arrayContaining([
+          expect.objectContaining({ provider: "webdav", code: "CLOUD_BACKUP_SNAPSHOT_FOUND" }),
+          expect.objectContaining({ provider: "s3", code: "CLOUD_BACKUP_SNAPSHOT_FOUND" }),
+        ]),
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
     expect(deletedProviders).toEqual([]);
   });
 
@@ -599,7 +604,8 @@ describe("Cloudflare cloud backup", () => {
       status: 400,
       code: "CLOUD_BACKUP_PROVIDER_REQUIRED",
       details: {
-        rawResponseText: "Use provider=webdav or provider=s3.",
+        operation: "request-validation",
+        clientMessage: "Use provider=webdav or provider=s3.",
       },
     } satisfies Partial<HttpError>);
   });
@@ -630,8 +636,8 @@ describe("Cloudflare cloud backup", () => {
     const env = fakeEnvForRows([s3CloudBackupRow()]);
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       const { headers, href } = fetchCallFromArgs(url, init);
-      expect(headers.get("authorization")).toBeNull();
-      expect(new URL(href).searchParams.get("X-Amz-Signature")).toBeTruthy();
+      expect(headers.get("authorization")).toContain("AWS4-HMAC-SHA256");
+      expect(new URL(href).searchParams.get("X-Amz-Signature")).toBeNull();
       return new Response(`<Error><Code>AccessDenied</Code><Message>access-key secret-key missing list permission</Message></Error>`, {
         status: 403,
         statusText: "Forbidden",
@@ -653,9 +659,12 @@ describe("Cloudflare cloud backup", () => {
 
     expect(error).toMatchObject({
       status: 400,
-      code: "CLOUD_BACKUP_LIST_FAILED",
+      code: "CLOUD_BACKUP_S3_LIST_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("AccessDenied"),
+        providerCode: "AccessDenied",
+        providerMessage: expect.stringContaining("missing list permission"),
+        httpStatus: 403,
+        requiredCapability: "bucket listing permission",
       },
     } satisfies Partial<HttpError>);
     expect(JSON.stringify(error?.details)).not.toContain("access-key");
@@ -699,14 +708,14 @@ describe("Cloudflare cloud backup", () => {
 
     expect(error).toMatchObject({
       status: 400,
-      code: "CLOUD_BACKUP_TEST_FAILED",
+      code: "CLOUD_BACKUP_S3_PUT_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("Value out of range"),
+        clientMessage: expect.stringContaining("Value out of range"),
+        operation: "PutObject",
       },
     } satisfies Partial<HttpError>);
-    const details = error?.details as { rawResponseText?: string | null } | undefined;
-    expect(details?.rawResponseText).toContain("S3");
-    expect(details?.rawResponseText).toContain("https://renewlet.storage.example.com/");
+    const details = error?.details as { target?: string } | undefined;
+    expect(details?.target).toContain("host=storage.example.com");
     expect(JSON.stringify(error?.details)).not.toContain("secret-key");
     expect(JSON.stringify(error?.details)).not.toContain("X-Amz-Signature");
   });
@@ -743,45 +752,5 @@ describe("Cloudflare cloud backup", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("runs due scheduled backups independently per provider while building one ZIP per user", async () => {
-    const rows: CloudBackupTargetRow[] = [
-      cloudBackupRow("webdav", {
-        schedule_enabled: 1,
-        schedule_time: "03:00",
-        last_backup_at: "2026-06-08T00:00:00.000Z",
-      }),
-      {
-        ...s3CloudBackupRow(),
-        schedule_enabled: 1,
-        schedule_frequency: "weekly",
-        schedule_time: "03:00",
-        schedule_weekday: "wednesday",
-        last_backup_at: "2026-06-02T19:00:00.000Z",
-      },
-    ];
-    let lockUpdates = 0;
-    let successUpdates = 0;
-    const env = fakeEnvForRows(rows, ({ sql, method }) => {
-      if (method === "run" && sql.includes("SET locked_until")) {
-        lockUpdates += 1;
-        return d1Run(1);
-      }
-      if (method === "run" && sql.includes("SET last_backup_at")) {
-        successUpdates += 1;
-        return d1Run(1);
-      }
-      return undefined;
-    });
-    const calls = stubRemoteSuccessFetch();
-    dbMocks.getSettings.mockResolvedValue({ ...createDefaultAppSettings(), timezone: "Asia/Shanghai" });
 
-    await runDueCloudBackups(env, new Date("2026-06-10T19:01:00.000Z"));
-
-    expect(lockUpdates).toBe(2);
-    expect(successUpdates).toBe(2);
-    expect(dbMocks.listSubscriptions).toHaveBeenCalledTimes(1);
-    expect(calls.filter((call) => call.startsWith("PUT "))).toHaveLength(4);
-    expect(calls.some((call) => call.includes("dav.example.com"))).toBe(true);
-    expect(calls.some((call) => call.includes("r2.example.com"))).toBe(true);
-  });
 });

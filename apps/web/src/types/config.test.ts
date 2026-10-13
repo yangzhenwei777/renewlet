@@ -1,6 +1,6 @@
 // config 类型测试保护默认配置迁移和内置支付方式/货币策略，避免旧 localStorage 形状污染 UI。
 import { describe, expect, it } from "vitest";
-import { CATEGORIES, CURRENCY_OPTIONS, SUBSCRIPTION_STATUSES } from "./subscription";
+import { CATEGORIES, CATEGORY_LABELS, CURRENCY_OPTIONS, SUBSCRIPTION_STATUSES } from "./subscription";
 import {
   getDefaultCategories,
   getDefaultCurrencies,
@@ -66,6 +66,32 @@ describe("category config defaults", () => {
     ];
 
     expect(normalizeCategories(customItems)).toEqual(customItems);
+  });
+
+  it("keeps colliding custom labels unbound without changing the persisted fields", () => {
+    const item: ConfigItem = {
+      id: "custom-category",
+      value: "custom-category",
+      labels: { "zh-CN": "其他", "en-US": "Other" },
+      color: "custom",
+    };
+
+    const normalized = normalizeCategories([item]);
+
+    expect(normalized[0]).toEqual(item);
+    expect(Object.keys(normalized[0]!.labels).sort()).toEqual(["en-US", "zh-CN"]);
+  });
+
+  it("rebinds an unchanged built-in category to its stable label source", () => {
+    const persisted: ConfigItem = {
+      id: "other",
+      value: "other",
+      labels: { ...CATEGORY_LABELS.other },
+    };
+
+    const normalized = normalizeCategories([persisted]);
+
+    expect(normalized[0]!.labels).toBe(CATEGORY_LABELS.other);
   });
 });
 

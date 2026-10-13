@@ -28,6 +28,8 @@ describe("Lingui compiled catalogs", () => {
     expect(translate("zh-CN", "subscriptions.count", { count: 3 })).toBe("共 3 个订阅");
     expect(translate("zh-CN", "dashboard.realTimeRates", { currency: "CNY" })).toBe("实时汇率换算 (CNY)");
     expect(translate("zh-CN", "subscription.reminderInherit", { days: 5 })).toBe("默认值从设置中获取（提前 5 天）");
+    expect(translate("zh-CN", "settings.cloudBackupS3PrefixHelp")).toBe("可留空，留空时直接使用 Bucket 根目录；建议使用专用 Bucket。只填写目录前缀，不要包含 .. 或文件名。");
+    expect(translate("en-US", "settings.cloudBackupS3PrefixHelp")).toBe("You can leave this empty to use the bucket root; a dedicated bucket is recommended. Enter a directory prefix only; do not include .. or a filename.");
   });
 
   it("formats date-only values through the provider helper", () => {

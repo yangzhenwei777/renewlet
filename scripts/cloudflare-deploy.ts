@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { LOCALE_PREFERENCES } from "@renewlet/shared/i18n-config";
 import {
   captureBookmark,
   deploymentRecoveryCommand,
@@ -19,13 +20,11 @@ import {
   writeWranglerConfig,
   type WranglerConfig,
 } from "./cloudflare-wrangler-config";
+import { SUBSCRIPTION_DERIVED_BACKFILL_NAME } from "./cloudflare-derived-backfill-state";
+import { readActiveWorkerDeployment, type ActiveDeployment } from "./cloudflare-worker-deployment";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const drainWindowMs = 15 * 60 * 1000;
-
-interface ActiveDeployment {
-  versionId: string;
-}
 
 interface D1TriggerDefinition {
   name: string;
@@ -47,6 +46,7 @@ export interface DeploymentOperations {
   ensureQueues(): Promise<void>;
   readActiveDeployment(): Promise<ActiveDeployment | undefined>;
   readAppliedExclusiveMigrations(names: readonly string[]): Promise<Set<string>>;
+  readPendingDerivedBackfill(): Promise<boolean>;
   captureBookmark(): Promise<string>;
   deployMaintenance(): Promise<ActiveDeployment>;
   waitForBackgroundDrain(): Promise<void>;
@@ -59,7 +59,7 @@ export interface DeploymentOperations {
   recordRecoveryHint(bookmark: string, versionId: string): void;
 }
 
-function exclusiveMigrationNames(): string[] {
+export function exclusiveMigrationNames(): string[] {
   return readdirSync(resolve(repoRoot, "apps/worker/migrations"))
     .filter((name) => /^\d{4}_exclusive_[a-z0-9_]+\.sql$/.test(name))
     .sort();
@@ -99,7 +99,7 @@ async function containAfterDatabaseWrite(
   throw failure;
 }
 
-/** 排他 migration 只有在旧后台执行完全排空后才能首次写 D1；写入后任何失败都保持 fail-closed。 */
+/** 排他 migration 或 v4 派生回填都必须在旧后台完全排空后首次写 D1；写入后任何失败都保持 fail-closed。 */
 export async function runCloudflareDeployment(operations: DeploymentOperations, names: readonly string[]): Promise<void> {
   await operations.prepare();
   await operations.ensureQueues();
@@ -107,11 +107,13 @@ export async function runCloudflareDeployment(operations: DeploymentOperations, 
   const previous = await operations.readActiveDeployment();
   const applied = await operations.readAppliedExclusiveMigrations(names);
   const pending = names.filter((name) => !applied.has(name));
+  // v4 marker 是 cancelled 派生语义的发布边界；即使没有新的排他 SQL migration，回填期间也必须停写。
+  const derivedBackfillPending = pending.length === 0 && await operations.readPendingDerivedBackfill();
   const bookmark = await operations.captureBookmark();
   operations.recordCheckpoint(bookmark, previous?.versionId);
 
   let maintenanceVersion: string | undefined;
-  if (pending.length > 0 && previous !== undefined) {
+  if ((pending.length > 0 || derivedBackfillPending) && previous !== undefined) {
     try {
       maintenanceVersion = (await operations.deployMaintenance()).versionId;
       if (maintenanceVersion === previous.versionId) {
@@ -210,22 +212,6 @@ function parseJson(text: string, context: string): unknown {
   }
 }
 
-function parseActiveDeployment(value: unknown): ActiveDeployment {
-  if (!isJsonObject(value) || !Array.isArray(value["versions"])) {
-    throw new Error("Wrangler deployment status returned an invalid object");
-  }
-  const versions = value["versions"];
-  if (versions.length !== 1 || !isJsonObject(versions[0])) {
-    throw new Error("Renewlet deployment requires one active Worker version at 100% traffic");
-  }
-  const versionId = versions[0]["version_id"];
-  const percentage = versions[0]["percentage"];
-  if (typeof versionId !== "string" || versionId.length === 0 || percentage !== 100) {
-    throw new Error("Renewlet deployment requires one active Worker version at 100% traffic");
-  }
-  return { versionId: safeWorkerVersion(versionId) };
-}
-
 function parseD1NameRow(value: unknown): string {
   if (!isJsonObject(value) || typeof value["name"] !== "string") {
     throw new Error("Cloudflare D1 migration query returned an invalid row");
@@ -251,29 +237,49 @@ function normalizeD1TriggerSQL(value: string): string {
   return value.trim().replace(/;\s*$/, "").replace(/\s+/g, " ");
 }
 
-/** 不变量期望值直接来自不可变 migration，避免在部署器里复制第二份 trigger 契约。 */
+/** guard 以排他迁移的最终定义为准；替换必须在同一份迁移中先 DROP 再 CREATE，不能放宽线上漂移校验。 */
 export function exclusiveMigrationTriggerDefinitions(names: readonly string[]): Map<string, string> {
   const definitions = new Map<string, string>();
   const triggerPattern = new RegExp(
-    String.raw`(CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z][A-Za-z0-9_]*)\b[\s\S]*?\bEND\s*;)`,
+    String.raw`DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?([A-Za-z][A-Za-z0-9_]*)\s*;|(CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z][A-Za-z0-9_]*)\b[\s\S]*?\bEND\s*;)`,
     "gi",
   );
-  for (const name of names) {
+  for (const name of [...names].sort()) {
     if (!/^\d{4}_exclusive_[a-z0-9_]+\.sql$/.test(name)) {
       throw new Error(`Invalid exclusive migration name: ${name}`);
     }
     const migration = readFileSync(resolve(repoRoot, "apps/worker/migrations", name), "utf8");
+    const dropped = new Set<string>();
     for (const match of migration.matchAll(triggerPattern)) {
-      const triggerName = match[2];
-      const sql = match[1];
-      if (!triggerName || !sql || definitions.has(triggerName)) {
+      const droppedName = match[1];
+      if (droppedName) {
+        dropped.add(droppedName);
+        continue;
+      }
+      const triggerName = match[3];
+      const sql = match[2];
+      if (!triggerName || !sql || (definitions.has(triggerName) && !dropped.has(triggerName))) {
         throw new Error(`Exclusive migration trigger definition is ambiguous: ${triggerName ?? name}`);
       }
       definitions.set(triggerName, normalizeD1TriggerSQL(sql));
+      dropped.delete(triggerName);
+    }
+    if (dropped.size > 0) {
+      throw new Error(`Exclusive migration must recreate dropped triggers: ${[...dropped].join(", ")}`);
     }
   }
   return definitions;
 }
+
+// 数据校验与运行时共享语言集合；trigger 仍单独对照不可变迁移全文，新增语言不能悄悄绕过数据库升级。
+export const settingsLocaleInvariantQuery = `SELECT COUNT(*) AS count FROM settings WHERE CASE
+  WHEN json_valid(settings_json) = 0 THEN 1
+  WHEN json_type(settings_json) IS NOT 'object' THEN 1
+  WHEN EXISTS (SELECT 1 FROM json_each(settings_json) GROUP BY key HAVING COUNT(*) > 1) THEN 1
+  WHEN json_type(settings_json, '$.locale') IS NOT NULL THEN 1
+  WHEN json_type(settings_json, '$.localePreference') IS NOT 'text' THEN 1
+  WHEN json_extract(settings_json, '$.localePreference') NOT IN (${LOCALE_PREFERENCES.map((locale) => `'${locale.replaceAll("'", "''")}'`).join(", ")}) THEN 1
+  ELSE 0 END = 1`;
 
 /** 同名 trigger 也必须逐定义一致，marker 和对象数量都不能证明数据库 guard 未被弱化。 */
 export function assertD1TriggerDefinitions(
@@ -356,17 +362,16 @@ function deploymentSummary(bookmark: string, versionId?: string): string {
 }
 
 function createOperations(options: DeployOptions): DeploymentOperations {
-  const environment = { ...process.env, CI_WRANGLER_CONFIG: options.configPath };
+  const environment: NodeJS.ProcessEnv = { ...process.env, CI_WRANGLER_CONFIG: options.configPath };
   const d1 = createD1OperationsClient({ target: "remote", configPath: options.configPath });
 
   const readActiveDeployment = async (): Promise<ActiveDeployment | undefined> => {
-    const result = await runPnpm(["exec", "wrangler", "deployments", "status", "--json", "--config", options.configPath]);
-    if (result.status !== 0) {
-      const output = `${result.stderr}\n${result.stdout}`;
-      if (/has no deployments|script[_ -]?not[_ -]?found|worker.+not found/i.test(output)) return undefined;
-      throw commandFailure("wrangler deployments status", result);
-    }
-    return parseActiveDeployment(parseJson(result.stdout, "Wrangler deployment status"));
+    const config = readWranglerConfig(options.configPath);
+    return readActiveWorkerDeployment({
+      accountId: environment["CLOUDFLARE_ACCOUNT_ID"]?.trim() ?? "",
+      apiToken: environment["CLOUDFLARE_API_TOKEN"]?.trim() ?? "",
+      workerName: requiredString(config, "name", "Wrangler config"),
+    });
   };
 
   const readAppliedExclusiveMigrations = async (names: readonly string[]): Promise<Set<string>> => {
@@ -383,6 +388,22 @@ function createOperations(options: DeployOptions): DeploymentOperations {
       parseD1NameRow,
     );
     return new Set(rows);
+  };
+
+  const readPendingDerivedBackfill = async (): Promise<boolean> => {
+    // 这里只做 marker 快速门禁决定是否停写；列签名、派生不变量和外键仍由回填脚本完整校验，避免部署前重复全量扫描。
+    const table = await d1.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'subscription_derived_backfills' LIMIT 1",
+      [],
+      parseD1NameRow,
+    );
+    if (table.length === 0) return true;
+    const marker = await d1.query(
+      "SELECT name FROM subscription_derived_backfills WHERE name = ? LIMIT 1",
+      [SUBSCRIPTION_DERIVED_BACKFILL_NAME],
+      parseD1NameRow,
+    );
+    return marker.length === 0;
   };
 
   const deploy = async (configPath: string, message: string): Promise<ActiveDeployment> => {
@@ -403,6 +424,7 @@ function createOperations(options: DeployOptions): DeploymentOperations {
     },
     readActiveDeployment,
     readAppliedExclusiveMigrations,
+    readPendingDerivedBackfill,
     async captureBookmark() {
       return await captureBookmark(options.configPath);
     },
@@ -420,14 +442,7 @@ function createOperations(options: DeployOptions): DeploymentOperations {
       const applied = await readAppliedExclusiveMigrations(names);
       if (names.some((name) => !applied.has(name))) throw new Error("Cloudflare D1 exclusive migration marker is missing");
       const invalid = await d1.query(
-        `SELECT COUNT(*) AS count FROM settings WHERE CASE
-          WHEN json_valid(settings_json) = 0 THEN 1
-          WHEN json_type(settings_json) IS NOT 'object' THEN 1
-          WHEN EXISTS (SELECT 1 FROM json_each(settings_json) GROUP BY key HAVING COUNT(*) > 1) THEN 1
-          WHEN json_type(settings_json, '$.locale') IS NOT NULL THEN 1
-          WHEN json_type(settings_json, '$.localePreference') IS NOT 'text' THEN 1
-          WHEN json_extract(settings_json, '$.localePreference') NOT IN ('auto', 'zh-CN', 'en-US') THEN 1
-          ELSE 0 END = 1`,
+        settingsLocaleInvariantQuery,
         [],
         parseD1CountRow,
       );

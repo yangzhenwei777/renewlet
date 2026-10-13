@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { SettingsReadState } from "../application/settings-read-state";
@@ -54,6 +54,21 @@ describe("ManagerDataBoundary", () => {
     expect(screen.queryByText("domain content")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps domain error actions beside the shared retry action", () => {
+    render(
+      <ManagerDataBoundary
+        state={readState({ data: undefined, hasData: false, error: new Error("failed") })}
+        errorActions={<button type="button">查看错误详情</button>}
+      >
+        <div>domain content</div>
+      </ManagerDataBoundary>,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getByRole("button", { name: "查看错误详情" })).toBeInTheDocument();
+    expect(within(alert).getByRole("button", { name: "重试" })).toBeInTheDocument();
   });
 
   it("keeps cached content visible and marks a stale refresh failure", () => {

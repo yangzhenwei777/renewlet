@@ -17,6 +17,7 @@ import { listSubscriptionsForQuery, parsePrivateSubscriptionCursor, privateSubsc
 import { subscriptionCollectionQueryInput } from "./subscription-query";
 import { advanceSubscriptionRenewal, dateOnlyInZone } from "./subscription-renewal";
 import type { SubscriptionRenewalResult } from "@renewlet/shared/subscription-renewal";
+import { writePublicVisibility } from "./subscription-public-visibility";
 import { subscriptionDerivedMutationPlan } from "./subscription-derived-state";
 import { HttpError, ok, readJson, requestLocale, successJson } from "./http";
 import { serverText } from "./server-i18n";
@@ -82,6 +83,12 @@ export async function updateSubscription(request: Request, env: Env, id: string)
   const existing = await getSubscription(env, auth.user.id, id);
   if (!existing) throw new HttpError(404, serverText(locale, "subscription.notFound"));
   const patch = await readJson(request, subscriptionUpdateBodySchema, locale);
+  if (Object.keys(patch).length === 1 && patch.publicHidden !== undefined) {
+    await writePublicVisibility(env, auth.user.id, existing.public_hidden === boolToInt(patch.publicHidden) ? [] : [existing], patch.publicHidden, locale);
+    const current = await getSubscription(env, auth.user.id, id);
+    if (!current) throw new HttpError(404, serverText(locale, "subscription.notFound"));
+    return successJson(subscriptionPayloadSchema.parse({ subscription: toApiSubscription(current) }));
+  }
   const timestamp = nowIso();
   const settings = await getSettings(env, auth.user.id);
   // Worker 没有 PocketBase hook 可二次归一；切换计费类型时先清理互斥字段，再合并 patch 走同一套 create schema。
@@ -385,7 +392,7 @@ export async function buildCostSharingCollectionReminderMirrorStatements(
   const rows = await env.DB.prepare(`SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions WHERE user_id = ?`)
     .bind(userId)
     .all<SubscriptionRow>();
-  const statements: D1PreparedStatement[] = [];
+  const changes: Array<[string, number, string | null]> = [];
   for (const row of rows.results) {
     const costSharingJson = parseJsonObject(row.cost_sharing_json ?? "{}");
     const costSharing = Object.keys(costSharingJson).length > 0 ? costSharingJson as SubscriptionBody["costSharing"] : null;
@@ -394,14 +401,17 @@ export async function buildCostSharingCollectionReminderMirrorStatements(
     if (row.cost_sharing_collection_reminder_enabled === enabled && row.cost_sharing_next_collection_reminder_date === mirror.nextReminderDate) {
       continue;
     }
-    // settings 的全局提醒天数/时区会影响 inherited 收款提醒；刷新只动内部索引镜像，不反写 cost_sharing_json。
-    statements.push(env.DB.prepare(`
-      UPDATE subscriptions
-      SET cost_sharing_collection_reminder_enabled = ?, cost_sharing_next_collection_reminder_date = ?
-      WHERE user_id = ? AND id = ?
-    `).bind(enabled, mirror.nextReminderDate, userId, row.id));
+    changes.push([row.id, enabled, mirror.nextReminderDate]);
   }
-  return statements;
+  if (changes.length === 0) return [];
+  // 收款镜像不反写用户配置；JSON1只更新当前owner的变化行，避免Cron逐条写放大D1查询数。
+  return [env.DB.prepare(`
+    UPDATE subscriptions AS subscription
+    SET cost_sharing_collection_reminder_enabled = json_extract(change.value, '$[1]'),
+        cost_sharing_next_collection_reminder_date = json_extract(change.value, '$[2]')
+    FROM json_each(?) AS change
+    WHERE subscription.user_id = ? AND subscription.id = json_extract(change.value, '$[0]')
+  `).bind(JSON.stringify(changes), userId)];
 }
 
 function collectionReminderMirror(

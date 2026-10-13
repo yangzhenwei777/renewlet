@@ -28,7 +28,21 @@ func TestBetween(t *testing.T) {
 			name:     "delete cancelled subscription",
 			before:   &Snapshot{UserID: "user-1", Status: "cancelled", AutoRenew: true, RepeatReminderEnabled: true},
 			userID:   "user-1",
-			expected: Delta{Total: -1, Cancelled: -1, AutoRenew: -1, RepeatReminder: -1},
+			expected: Delta{Total: -1, Cancelled: -1, AutoRenew: -1},
+		},
+		{
+			name:     "cancel active repeat reminder",
+			before:   &Snapshot{UserID: "user-1", Status: "active", RepeatReminderEnabled: true},
+			after:    &Snapshot{UserID: "user-1", Status: "cancelled", RepeatReminderEnabled: true},
+			userID:   "user-1",
+			expected: Delta{Active: -1, Cancelled: 1, RepeatReminder: -1},
+		},
+		{
+			name:     "restore cancelled repeat reminder",
+			before:   &Snapshot{UserID: "user-1", Status: "cancelled", RepeatReminderEnabled: true},
+			after:    &Snapshot{UserID: "user-1", Status: "active", RepeatReminderEnabled: true},
+			userID:   "user-1",
+			expected: Delta{Active: 1, Cancelled: -1, RepeatReminder: 1},
 		},
 		{
 			name:     "ignore another owner",

@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
@@ -17,9 +18,6 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ],
-      "@renewlet/shared/*": [
-        "../shared/src/*"
       ]
     },
     "noImplicitAny": true,

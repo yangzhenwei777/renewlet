@@ -17,6 +17,7 @@ import {
   type CloudBackupConfig,
   type CloudBackupConfigUpdate,
   type CloudBackupProvider,
+  type CloudBackupS3AddressingStyle,
   type CloudBackupScheduleFrequency,
   type CloudBackupScheduleWeekday,
   type CloudBackupSnapshot,
@@ -43,6 +44,7 @@ export interface CloudBackupFormState {
   s3Region: string;
   s3Bucket: string;
   s3Prefix: string;
+  s3AddressingStyle: CloudBackupS3AddressingStyle;
   s3AccessKeyId: string;
   s3SecretAccessKey: string;
   scheduleEnabled: boolean;
@@ -51,6 +53,15 @@ export interface CloudBackupFormState {
   scheduleWeekday: CloudBackupScheduleWeekday;
   retention: string;
 }
+
+export type CloudBackupErrorDetailsContext = {
+  scope: "action";
+  action: "test" | "create" | "restore" | "delete";
+  provider: CloudBackupProvider;
+} | {
+  scope: "snapshots";
+  provider: CloudBackupProvider;
+};
 
 export interface CloudBackupController {
   config: SettingsReadState<CloudBackupConfig>;
@@ -69,6 +80,7 @@ export interface CloudBackupController {
   hasUnsavedChanges: boolean;
   snapshotsErrorMessage: string | null;
   cloudBackupErrorDetails: CloudBackupErrorDetailsView | null;
+  cloudBackupErrorDetailsContext: CloudBackupErrorDetailsContext | null;
   cloudBackupErrorDetailsOpen: boolean;
   setCloudBackupErrorDetailsOpen: (open: boolean) => void;
   openSnapshotsErrorDetails: () => void;
@@ -100,6 +112,7 @@ interface CloudBackupS3Draft extends CloudBackupPolicyDraft {
   s3Region: string;
   s3Bucket: string;
   s3Prefix: string;
+  s3AddressingStyle: CloudBackupS3AddressingStyle;
   s3AccessKeyId: string;
   s3SecretAccessKey: string;
 }
@@ -142,6 +155,7 @@ const DEFAULT_S3_DRAFT: CloudBackupS3Draft = {
   s3Region: "",
   s3Bucket: "",
   s3Prefix: "renewlet",
+  s3AddressingStyle: "auto",
   s3AccessKeyId: "",
   s3SecretAccessKey: "",
 };
@@ -173,7 +187,9 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
   const deleteSnapshotMutation = useDeleteCloudBackupSnapshot();
   const [restoringSnapshotKey, setRestoringSnapshotKey] = useState<string | null>(null);
   const [deletingSnapshotKey, setDeletingSnapshotKey] = useState<string | null>(null);
+  // raw 响应只在当前页面会话内保存，并绑定 provider/来源；持久化状态只保留稳定失败码，避免刷新后泄露或误用旧详情。
   const [cloudBackupErrorDetails, setCloudBackupErrorDetails] = useState<CloudBackupErrorDetailsView | null>(null);
+  const [cloudBackupErrorDetailsContext, setCloudBackupErrorDetailsContext] = useState<CloudBackupErrorDetailsContext | null>(null);
   const [cloudBackupErrorDetailsOpen, setCloudBackupErrorDetailsOpen] = useState(false);
   const [savedDraftSnapshotByProvider, setSavedDraftSnapshotByProvider] = useState<CloudBackupDraftSnapshotByProvider>(() => stableDraftSnapshotByProvider(createDefaultDraftByProvider()));
   const savedDraftSnapshotByProviderRef = useRef(savedDraftSnapshotByProvider);
@@ -203,17 +219,33 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
     && (!configReadState.hasData || draftState.initializedFromConfig)
     && !snapshotsReadState.isInitialLoading;
 
-  const openCloudBackupErrorDetails = useCallback((error: unknown, fallbackMessage: string) => {
-    const extracted = extractCloudBackupErrorDetails(error);
+  const clearCloudBackupErrorDetails = useCallback(() => {
+    // 新动作或 provider 切换会使上一份响应失去上下文，先清理再等待新的失败结果。
+    setCloudBackupErrorDetails(null);
+    setCloudBackupErrorDetailsContext(null);
+    setCloudBackupErrorDetailsOpen(false);
+  }, []);
+
+  const openCloudBackupErrorDetails = useCallback((
+    error: unknown,
+    fallbackMessage: string,
+    context: CloudBackupErrorDetailsContext,
+  ) => {
+    const extracted = extractCloudBackupErrorDetails(error, fallbackMessage);
     const details = extracted ?? createCloudBackupErrorDetails(error, fallbackMessage);
     setCloudBackupErrorDetails(details);
+    setCloudBackupErrorDetailsContext(context);
     setCloudBackupErrorDetailsOpen(true);
   }, []);
 
   const openSnapshotsErrorDetails = useCallback(() => {
     if (!snapshotsQuery.error) return;
-    openCloudBackupErrorDetails(snapshotsQuery.error, t("settings.cloudBackupSnapshotsLoadFailed"));
-  }, [openCloudBackupErrorDetails, snapshotsQuery.error, t]);
+    openCloudBackupErrorDetails(
+      snapshotsQuery.error,
+      t("settings.cloudBackupSnapshotsLoadFailed"),
+      { scope: "snapshots", provider: activeProvider },
+    );
+  }, [activeProvider, openCloudBackupErrorDetails, snapshotsQuery.error, t]);
 
   useEffect(() => {
     if (!configQuery.data) return;
@@ -227,6 +259,7 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
   }, [configQuery.data]);
 
   const updateForm = useCallback(<K extends keyof CloudBackupFormState>(key: K, value: CloudBackupFormState[K]) => {
+    if (key === "provider") clearCloudBackupErrorDetails();
     setDraftState((previous) => {
       if (key === "provider") {
         return { ...previous, activeProvider: value as CloudBackupProvider };
@@ -236,7 +269,7 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
         draftByProvider: updateDraftByField(previous.draftByProvider, previous.activeProvider, key, value),
       };
     });
-  }, []);
+  }, [clearCloudBackupErrorDetails]);
 
   const parsePayload = useCallback((): CloudBackupConfigUpdate => {
     try {
@@ -251,6 +284,7 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
   }, [activeProvider, draftByProvider, t]);
 
   const saveConfig = useCallback(async () => {
+    clearCloudBackupErrorDetails();
     try {
       const payload = parsePayload();
       const saved = await updateConfigMutation.mutateAsync(payload);
@@ -269,22 +303,29 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
         description: getDisplayErrorMessage(error, t("settings.cloudBackupSaveFailedDescription")),
       });
     }
-  }, [parsePayload, t, updateConfigMutation]);
+  }, [clearCloudBackupErrorDetails, parsePayload, t, updateConfigMutation]);
 
   const testConfig = useCallback(async () => {
+    clearCloudBackupErrorDetails();
     try {
-      await testMutation.mutateAsync(parsePayload());
+      const payload = parsePayload();
+      await testMutation.mutateAsync(payload);
       toast.success(t("settings.cloudBackupTestSucceeded"));
     } catch (error) {
       if (error instanceof z.ZodError) return;
       toast.error(t("settings.cloudBackupTestFailed"), {
         description: getDisplayErrorMessage(error, t("settings.cloudBackupTestFailedDescription")),
       });
-      openCloudBackupErrorDetails(error, t("settings.cloudBackupTestFailedDescription"));
+      openCloudBackupErrorDetails(error, t("settings.cloudBackupTestFailedDescription"), {
+        scope: "action",
+        action: "test",
+        provider: activeProvider,
+      });
     }
-  }, [openCloudBackupErrorDetails, parsePayload, t, testMutation]);
+  }, [activeProvider, clearCloudBackupErrorDetails, openCloudBackupErrorDetails, parsePayload, t, testMutation]);
 
   const createSnapshot = useCallback(async () => {
+    clearCloudBackupErrorDetails();
     try {
       await createSnapshotMutation.mutateAsync({ provider: activeProvider });
       toast.success(t("settings.cloudBackupCreated"));
@@ -292,12 +333,17 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
       toast.error(t("settings.cloudBackupCreateFailed"), {
         description: getDisplayErrorMessage(error, t("settings.cloudBackupCreateFailedDescription")),
       });
-      openCloudBackupErrorDetails(error, t("settings.cloudBackupCreateFailedDescription"));
+      openCloudBackupErrorDetails(error, t("settings.cloudBackupCreateFailedDescription"), {
+        scope: "action",
+        action: "create",
+        provider: activeProvider,
+      });
     }
-  }, [activeProvider, createSnapshotMutation, openCloudBackupErrorDetails, t]);
+  }, [activeProvider, clearCloudBackupErrorDetails, createSnapshotMutation, openCloudBackupErrorDetails, t]);
 
   const restoreSnapshot = useCallback(async (snapshot: CloudBackupSnapshot) => {
     // 恢复 loading 必须绑定 provider:id；WebDAV/S3 可以出现同名快照 id，不能只用 id 标记行状态。
+    clearCloudBackupErrorDetails();
     setRestoringSnapshotKey(cloudBackupSnapshotKey(snapshot));
     try {
       const blob = await downloadSnapshotMutation.mutateAsync(snapshot);
@@ -308,14 +354,19 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
       toast.error(t("settings.cloudBackupRestoreFailed"), {
         description: getDisplayErrorMessage(error, t("settings.cloudBackupRestoreFailedDescription")),
       });
-      openCloudBackupErrorDetails(error, t("settings.cloudBackupRestoreFailedDescription"));
+      openCloudBackupErrorDetails(error, t("settings.cloudBackupRestoreFailedDescription"), {
+        scope: "action",
+        action: "restore",
+        provider: snapshot.provider,
+      });
     } finally {
       setRestoringSnapshotKey(null);
     }
-  }, [downloadSnapshotMutation, onRestoreFile, openCloudBackupErrorDetails, t]);
+  }, [clearCloudBackupErrorDetails, downloadSnapshotMutation, onRestoreFile, openCloudBackupErrorDetails, t]);
 
   const deleteSnapshot = useCallback(async (snapshot: CloudBackupSnapshot) => {
     // 删除 mutation 也是全局单操作；行级 UI 必须绑定 provider:id，避免 WebDAV/S3 同名快照串 loading。
+    clearCloudBackupErrorDetails();
     setDeletingSnapshotKey(cloudBackupSnapshotKey(snapshot));
     try {
       await deleteSnapshotMutation.mutateAsync(snapshot);
@@ -324,11 +375,15 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
       toast.error(t("settings.cloudBackupDeleteFailed"), {
         description: getDisplayErrorMessage(error, t("settings.cloudBackupDeleteFailedDescription")),
       });
-      openCloudBackupErrorDetails(error, t("settings.cloudBackupDeleteFailedDescription"));
+      openCloudBackupErrorDetails(error, t("settings.cloudBackupDeleteFailedDescription"), {
+        scope: "action",
+        action: "delete",
+        provider: snapshot.provider,
+      });
     } finally {
       setDeletingSnapshotKey(null);
     }
-  }, [deleteSnapshotMutation, openCloudBackupErrorDetails, t]);
+  }, [clearCloudBackupErrorDetails, deleteSnapshotMutation, openCloudBackupErrorDetails, t]);
 
   return {
     config: configReadState,
@@ -347,6 +402,7 @@ export function useCloudBackupController(onRestoreFile: (file: File) => void): C
     hasUnsavedChanges,
     snapshotsErrorMessage,
     cloudBackupErrorDetails,
+    cloudBackupErrorDetailsContext,
     cloudBackupErrorDetailsOpen,
     setCloudBackupErrorDetailsOpen,
     openSnapshotsErrorDetails,
@@ -383,6 +439,7 @@ function formFromDraftState(state: CloudBackupDraftState): CloudBackupFormState 
     s3Region: draftByProvider.s3.s3Region,
     s3Bucket: draftByProvider.s3.s3Bucket,
     s3Prefix: draftByProvider.s3.s3Prefix,
+    s3AddressingStyle: draftByProvider.s3.s3AddressingStyle,
     s3AccessKeyId: draftByProvider.s3.s3AccessKeyId,
     s3SecretAccessKey: draftByProvider.s3.s3SecretAccessKey,
     scheduleEnabled: activeDraft.scheduleEnabled,
@@ -427,6 +484,7 @@ function s3DraftFromConfig(config: CloudBackupConfig): CloudBackupS3Draft {
     s3Region: config.s3?.region ?? "",
     s3Bucket: config.s3?.bucket ?? "",
     s3Prefix: config.s3?.prefix ?? "renewlet",
+    s3AddressingStyle: config.s3?.addressingStyle ?? "auto",
     s3AccessKeyId: config.s3?.accessKeyId ?? "",
     s3SecretAccessKey: "",
   };
@@ -501,6 +559,7 @@ function formToPayload(provider: CloudBackupProvider, draft: CloudBackupProvider
       region: s3Draft.s3Region,
       bucket: s3Draft.s3Bucket,
       prefix: s3Draft.s3Prefix,
+      addressingStyle: s3Draft.s3AddressingStyle,
       accessKeyId: s3Draft.s3AccessKeyId,
     },
     credentials: s3Draft.s3SecretAccessKey.trim() ? { s3SecretAccessKey: s3Draft.s3SecretAccessKey } : {},
@@ -527,6 +586,7 @@ function updateDraftByField<K extends keyof CloudBackupFormState>(
     case "s3Region":
     case "s3Bucket":
     case "s3Prefix":
+    case "s3AddressingStyle":
     case "s3AccessKeyId":
     case "s3SecretAccessKey":
       return {
@@ -570,7 +630,7 @@ function credentialSetForProvider(config: CloudBackupConfig, provider: CloudBack
 }
 
 function cloudBackupSnapshotsErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.code === "CLOUD_BACKUP_LIST_FAILED") return fallback;
+  if (error instanceof ApiError && (error.code?.endsWith("_LIST_FAILED") || error.code === "CLOUD_BACKUP_MANIFEST_INVALID")) return fallback;
   return getDisplayErrorMessage(error, fallback);
 }
 
@@ -606,6 +666,7 @@ function stableProviderDraftSnapshot(provider: CloudBackupProvider, draft: Cloud
     s3Region: s3Draft.s3Region,
     s3Bucket: s3Draft.s3Bucket,
     s3Prefix: s3Draft.s3Prefix,
+    s3AddressingStyle: s3Draft.s3AddressingStyle,
     s3AccessKeyId: s3Draft.s3AccessKeyId,
     scheduleEnabled: s3Draft.scheduleEnabled,
     scheduleFrequency: s3Draft.scheduleFrequency,

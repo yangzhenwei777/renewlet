@@ -15,6 +15,9 @@ function TestRoutes() {
       <button type="button" onClick={() => navigate(-1)}>
         返回
       </button>
+      <button type="button" onClick={() => navigate({ hash: "#settings-account" }, { replace: true })}>
+        设置锚点
+      </button>
       <Routes>
         <Route path="/subscriptions" element={<h1>订阅</h1>} />
         <Route path="/calendar" element={<h1>日历页</h1>} />
@@ -95,6 +98,18 @@ describe("AppScrollRestoration", () => {
       expect(screen.getByRole("heading", { name: "统计页" })).toBeInTheDocument();
       expect(root.scrollTop).toBe(0);
     });
+  });
+
+  it("keeps the app scroll position for hash-only navigation", async () => {
+    const user = userEvent.setup();
+    renderWithRoot();
+    const root = getRoot();
+    root.scrollTop = 640;
+    fireEvent.scroll(root);
+
+    await user.click(screen.getByRole("button", { name: "设置锚点" }));
+
+    await waitFor(() => expect(root.scrollTop).toBe(640));
   });
 
   it("does not crash when the app scroll container is missing", () => {

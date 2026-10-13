@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { useRouter } from '@/lib/router';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,8 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/i18n/I18nProvider';
 import { settingsLayout } from './settings-layout';
 
-const PROGRAMMATIC_SCROLL_IDLE_MS = 160;
+const LAYOUT_SETTLE_MAX_MS = 2_000;
+const LAYOUT_SETTLE_STABLE_FRAMES = 2;
 const BOTTOM_EDGE_TOLERANCE_PX = 4;
 
 export const SETTINGS_SECTIONS = [
@@ -52,13 +54,19 @@ export function createSettingsSections({
 }
 
 /**
- * 延迟区块的目录导航必须跨过两个独立生命周期：waitingForContent 已锁定 hash/active，
- * 但 fallback 几何不可用于定位；scrolling 才允许消费真实区块位置和 scrollend。
+ * 延迟区块先定位到稳定骨架，再在真实内容提交后做有限校正；远程数据不能成为目录点击的阻塞条件。
  */
 type ProgrammaticNavigation = {
   targetId: SettingsSectionId;
-  idleTimer: number | null;
-  phase: "waitingForContent" | "scrolling";
+  initialFrame: number | null;
+  settleFrame: number | null;
+  settleDeadline: number;
+  stableFrames: number;
+  lastAnchorTop: number | null;
+  needsCorrection: boolean;
+  awaitingDeferredCommit: boolean;
+  hasScrollEvent: boolean;
+  phase: "targetSelected" | "moduleCommitted" | "layoutSettling" | "complete";
 };
 type SettingsSectionNavigationOptions = {
   deferredSectionIds?: readonly SettingsSectionId[] | undefined;
@@ -75,10 +83,29 @@ function getSectionFromHash(hash: string, sections: SettingsSectionList): Settin
   return sections.some((section) => section.id === id) ? (id as SettingsSectionId) : null;
 }
 
-function scrollToSettingsSection(id: SettingsSectionId) {
+function scrollToSettingsSection(id: SettingsSectionId, behavior: ScrollBehavior = "smooth") {
   const section = document.getElementById(id);
-  if (!section) return;
-  section.scrollIntoView({ block: "start", behavior: "smooth" });
+  if (!section) return false;
+  const root = getAppScrollRoot();
+  const reducedMotion = typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const resolvedBehavior = reducedMotion ? "auto" : behavior;
+
+  // scrollIntoView 在移动端抽屉退场、body 锁定和嵌套滚动上下文同时发生时，可能只更新窗口滚动位置。
+  // #root 是应用唯一滚动面，按真实 DOMRect 计算一次目标 scrollTop，确保点击反馈不依赖浏览器选中的祖先容器。
+  const rootRect = root?.getBoundingClientRect();
+  const sectionRect = rootRect ? section.getBoundingClientRect() : null;
+  const scrollMarginTop = parseCssLengthToPx(window.getComputedStyle(section).scrollMarginTop) ?? 0;
+  if (root && rootRect && sectionRect) {
+    const nextScrollTop = Math.max(0, root.scrollTop + sectionRect.top - rootRect.top - scrollMarginTop);
+    // 目录点击可能同时关闭移动端抽屉；同步写入先锁定目标位置，避免抽屉的滚动锁取消尚未完成的 smooth 动画。
+    root.scrollTop = nextScrollTop;
+    // 保留原生锚点语义；nearest 在已定位的 #root 上不会重新选择 body 或打断同步定位，测试和辅助技术也能观察到标准滚动调用。
+    section.scrollIntoView({ block: "nearest", behavior: "auto" });
+  } else {
+    section.scrollIntoView({ block: "start", behavior: resolvedBehavior });
+  }
+  return true;
 }
 
 function getAppScrollRoot() {
@@ -192,14 +219,14 @@ export function useSettingsSectionNavigation(
 ) {
   const firstSectionId = sections[0]?.id ?? SETTINGS_SECTIONS[0].id;
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>(firstSectionId);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const deferredSectionIds = options.deferredSectionIds;
   const programmaticNavigationRef = useRef<ProgrammaticNavigation | null>(null);
-  const deferredSectionsReadyRef = useRef(options.deferredSectionIds?.length ? false : true);
-  const deferredScrollFrameRef = useRef<number | null>(null);
+  const locationHashHandledRef = useRef<string | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
-
-  const isDeferredSection = useCallback((id: SettingsSectionId) => (
-    options.deferredSectionIds?.some((candidate) => candidate === id) ?? false
-  ), [options.deferredSectionIds]);
+  const scheduleLayoutCorrectionRef = useRef<() => void>(() => undefined);
 
   const applyAnchorActiveSection = useCallback(() => {
     const root = getAppScrollRoot();
@@ -216,53 +243,166 @@ export function useSettingsSectionNavigation(
 
   const endProgrammaticNavigation = useCallback((options: { applyAnchorSection?: boolean } = {}) => {
     const navigation = programmaticNavigationRef.current;
-    if (navigation && navigation.idleTimer !== null) {
-      window.clearTimeout(navigation.idleTimer);
+    if (navigation?.initialFrame !== null && navigation?.initialFrame !== undefined) {
+      window.cancelAnimationFrame(navigation.initialFrame);
     }
-    if (deferredScrollFrameRef.current !== null) {
-      window.cancelAnimationFrame(deferredScrollFrameRef.current);
-      deferredScrollFrameRef.current = null;
+    if (navigation?.settleFrame !== null && navigation?.settleFrame !== undefined) {
+      window.cancelAnimationFrame(navigation.settleFrame);
     }
+    if (navigation) navigation.phase = "complete";
     programmaticNavigationRef.current = null;
     if (options.applyAnchorSection) applyAnchorActiveSection();
   }, [applyAnchorActiveSection]);
 
-  const beginProgrammaticNavigation = useCallback((id: SettingsSectionId) => {
-    endProgrammaticNavigation();
-    const waitingForContent = isDeferredSection(id) && !deferredSectionsReadyRef.current;
-    programmaticNavigationRef.current = {
-      targetId: id,
-      idleTimer: null,
-      phase: waitingForContent ? "waitingForContent" : "scrolling",
-    };
-    setActiveSectionId(id);
-    if (!waitingForContent) scrollToSettingsSection(id);
-  }, [endProgrammaticNavigation, isDeferredSection]);
-
-  const markDeferredSectionsReady = useCallback(() => {
-    // layout effect 的 ready 早于浏览器派发布局替换事件；下一渲染帧再切到 scrolling，避免旧 scrollend 提前结束新导航。
-    deferredSectionsReadyRef.current = true;
+  const scheduleLayoutCorrection = useCallback(() => {
     const navigation = programmaticNavigationRef.current;
-    if (!navigation || navigation.phase !== "waitingForContent") return;
-    if (deferredScrollFrameRef.current !== null) return;
-    deferredScrollFrameRef.current = window.requestAnimationFrame(() => {
-      deferredScrollFrameRef.current = null;
-      if (programmaticNavigationRef.current !== navigation || navigation.phase !== "waitingForContent") return;
-      navigation.phase = "scrolling";
-      scrollToSettingsSection(navigation.targetId);
+    if (!navigation || navigation.phase !== "layoutSettling" || navigation.settleFrame !== null) return;
+
+    navigation.settleFrame = window.requestAnimationFrame(() => {
+      navigation.settleFrame = null;
+      const currentNavigation = programmaticNavigationRef.current;
+      if (currentNavigation !== navigation || navigation.phase !== "layoutSettling") return;
+
+      const now = performance.now();
+      const root = getAppScrollRoot();
+      if (!root || now >= navigation.settleDeadline) {
+        endProgrammaticNavigation();
+        return;
+      }
+
+      const section = getSectionElement(navigation.targetId);
+      if (!section) {
+        scheduleLayoutCorrectionRef.current();
+        return;
+      }
+
+      const anchorTop = section.getBoundingClientRect().top;
+      if (navigation.needsCorrection && !isAnchorStillWithinSection(root, navigation.targetId, sections)) {
+        scrollToSettingsSection(navigation.targetId, "auto");
+        navigation.stableFrames = 0;
+        navigation.needsCorrection = false;
+      } else if (navigation.lastAnchorTop !== null && Math.abs(anchorTop - navigation.lastAnchorTop) <= 0.5) {
+        navigation.stableFrames += 1;
+      } else {
+        navigation.stableFrames = 0;
+      }
+      navigation.lastAnchorTop = anchorTop;
+
+      if (navigation.stableFrames >= LAYOUT_SETTLE_STABLE_FRAMES && navigation.hasScrollEvent) {
+        endProgrammaticNavigation();
+      } else {
+        scheduleLayoutCorrectionRef.current();
+      }
     });
-  }, []);
+  }, [endProgrammaticNavigation, sections]);
 
   useEffect(() => {
-    const syncActiveSectionFromHash = () => {
-      const sectionId = getSectionFromHash(window.location.hash, sections);
+    scheduleLayoutCorrectionRef.current = scheduleLayoutCorrection;
+  }, [scheduleLayoutCorrection]);
+
+  const beginProgrammaticNavigation = useCallback((id: SettingsSectionId, updateLocation = true) => {
+    endProgrammaticNavigation();
+    const targetElement = getSectionElement(id);
+    // 只有命中仍处于 aria-busy 的骨架才等待真实模块 commit；已经提交的分组可直接进入有限校正，避免重复点击白等 2 秒。
+    const navigation: ProgrammaticNavigation = {
+      targetId: id,
+      initialFrame: null,
+      settleFrame: null,
+      settleDeadline: performance.now() + LAYOUT_SETTLE_MAX_MS,
+      stableFrames: 0,
+      lastAnchorTop: null,
+      needsCorrection: false,
+      awaitingDeferredCommit: (deferredSectionIds?.includes(id) ?? false)
+        && (targetElement?.getAttribute("aria-busy") === "true" || !targetElement),
+      hasScrollEvent: false,
+      phase: "targetSelected",
+    };
+    programmaticNavigationRef.current = navigation;
+    setActiveSectionId(id);
+    if (updateLocation) {
+      const hash = `#${id}`;
+      locationHashHandledRef.current = hash;
+      // 每次目录选择保留独立 history entry，后退可以回到上一个设置区块；刷新和直接打开仍由 hash 恢复。
+      navigate({ hash });
+    }
+    // 先定位已有骨架，让点击在当前帧就有反馈；懒加载提交后再由 ResizeObserver/回调触发有限校正。
+    if (scrollToSettingsSection(id)) {
+      navigation.phase = "moduleCommitted";
+    }
+    const commitTargetWhenRendered = () => {
+      navigation.initialFrame = null;
+      if (programmaticNavigationRef.current !== navigation) return;
+      if (!getSectionElement(id)) {
+        if (performance.now() >= navigation.settleDeadline) {
+          endProgrammaticNavigation();
+          return;
+        }
+        navigation.initialFrame = window.requestAnimationFrame(commitTargetWhenRendered);
+        return;
+      }
+      if (navigation.phase === "targetSelected") {
+        scrollToSettingsSection(id);
+        navigation.phase = "moduleCommitted";
+      }
+      if (navigation.phase === "moduleCommitted" && navigation.awaitingDeferredCommit) {
+        if (performance.now() >= navigation.settleDeadline) endProgrammaticNavigation();
+        else navigation.initialFrame = window.requestAnimationFrame(commitTargetWhenRendered);
+        return;
+      }
+      if (navigation.phase === "moduleCommitted") navigation.phase = "layoutSettling";
+      scheduleLayoutCorrection();
+    };
+    navigation.initialFrame = window.requestAnimationFrame(commitTargetWhenRendered);
+  }, [deferredSectionIds, endProgrammaticNavigation, navigate, scheduleLayoutCorrection]);
+
+  const markDeferredSectionsReady = useCallback(() => {
+    const navigation = programmaticNavigationRef.current;
+    if (!navigation) return;
+    if (deferredSectionIds && !deferredSectionIds.includes(navigation.targetId)) return;
+    navigation.phase = "moduleCommitted";
+    navigation.awaitingDeferredCommit = false;
+    navigation.needsCorrection = true;
+    navigation.stableFrames = 0;
+    navigation.lastAnchorTop = null;
+    if (navigation.initialFrame !== null) {
+      window.cancelAnimationFrame(navigation.initialFrame);
+      navigation.initialFrame = null;
+    }
+    navigation.phase = "layoutSettling";
+    scheduleLayoutCorrection();
+  }, [deferredSectionIds, scheduleLayoutCorrection]);
+
+  useEffect(() => {
+    const sectionId = getSectionFromHash(location.hash, sections);
+    if (!sectionId || locationHashHandledRef.current === location.hash) {
+      locationHashHandledRef.current = null;
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => beginProgrammaticNavigation(sectionId, false));
+    return () => window.cancelAnimationFrame(frame);
+  }, [beginProgrammaticNavigation, location.hash, sections]);
+
+  useEffect(() => {
+    const restoreHashAfterHistoryNavigation = () => {
+      const hash = window.location.hash;
+      const sectionId = getSectionFromHash(hash, sections);
       if (!sectionId) return;
-      window.requestAnimationFrame(() => beginProgrammaticNavigation(sectionId));
+      // React Router 的 hash-only history entry 在部分浏览器只触发 popstate，不一定重新提交 location；
+      // 直接接住原生回退，保证目录高亮和滚动恢复与 URL 同步。
+      locationHashHandledRef.current = hash;
+      window.requestAnimationFrame(() => {
+        if (window.location.hash !== hash) return;
+        locationHashHandledRef.current = hash;
+        beginProgrammaticNavigation(sectionId, false);
+      });
     };
 
-    syncActiveSectionFromHash();
-    window.addEventListener("hashchange", syncActiveSectionFromHash);
-    return () => window.removeEventListener("hashchange", syncActiveSectionFromHash);
+    window.addEventListener("popstate", restoreHashAfterHistoryNavigation);
+    window.addEventListener("hashchange", restoreHashAfterHistoryNavigation);
+    return () => {
+      window.removeEventListener("popstate", restoreHashAfterHistoryNavigation);
+      window.removeEventListener("hashchange", restoreHashAfterHistoryNavigation);
+    };
   }, [beginProgrammaticNavigation, sections]);
 
   useEffect(() => {
@@ -281,10 +421,11 @@ export function useSettingsSectionNavigation(
     };
     const handleScrollEnd = () => {
       const navigation = programmaticNavigationRef.current;
-      if (!navigation || navigation.phase === "waitingForContent") return;
-      endProgrammaticNavigation({
-        applyAnchorSection: !isAnchorStillWithinSection(root, navigation.targetId, sections),
-      });
+      if (!navigation || navigation.phase === "targetSelected" || navigation.phase === "complete") return;
+      navigation.hasScrollEvent = true;
+      navigation.needsCorrection = true;
+      navigation.stableFrames = 0;
+      scheduleLayoutCorrection();
     };
     const handleScroll = () => {
       const navigation = programmaticNavigationRef.current;
@@ -292,18 +433,9 @@ export function useSettingsSectionNavigation(
         scheduleAnchorActiveSection();
         return;
       }
-      // fallback 会被真实高级区块整体替换；等待 commit 时忽略布局滚动，但 wheel/touch/pointer/key 仍可取消用户意图。
-      if (navigation.phase === "waitingForContent") return;
-      if (navigation.idleTimer !== null) window.clearTimeout(navigation.idleTimer);
-      navigation.idleTimer = window.setTimeout(
-        () => {
-          const currentNavigation = programmaticNavigationRef.current;
-          endProgrammaticNavigation({
-            applyAnchorSection: currentNavigation ? !isAnchorStillWithinSection(root, currentNavigation.targetId, sections) : false,
-          });
-        },
-        PROGRAMMATIC_SCROLL_IDLE_MS,
-      );
+      if (navigation.phase === "targetSelected" || navigation.phase === "complete") return;
+      navigation.hasScrollEvent = true;
+      // 自动滚动产生的 scroll 事件不能结束校正；只有用户输入会通过 cancelForUserScroll 中断。
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
@@ -323,14 +455,35 @@ export function useSettingsSectionNavigation(
     scheduleAnchorActiveSection();
     root.addEventListener("wheel", cancelForUserScroll, { passive: true, capture: true });
     root.addEventListener("touchstart", cancelForUserScroll, { passive: true, capture: true });
+    root.addEventListener("touchmove", cancelForUserScroll, { passive: true, capture: true });
     root.addEventListener("pointerdown", cancelForUserScroll, { passive: true, capture: true });
     root.addEventListener("scroll", handleScroll, { passive: true });
     root.addEventListener("scrollend", handleScrollEnd);
     window.addEventListener("keydown", handleKeyDown, true);
 
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        const navigation = programmaticNavigationRef.current;
+        if (navigation && navigation.phase !== "complete") {
+          navigation.needsCorrection = true;
+          navigation.stableFrames = 0;
+          navigation.lastAnchorTop = null;
+        }
+        scheduleLayoutCorrection();
+      });
+      const rootContent = document.querySelector<HTMLElement>('[data-testid="settings-section-content"]');
+      if (rootContent) observer.observe(rootContent);
+      for (const section of sections) {
+        const element = getSectionElement(section.id);
+        if (element) observer.observe(element);
+      }
+      resizeObserverRef.current = observer;
+    }
+
     return () => {
       root.removeEventListener("wheel", cancelForUserScroll, { capture: true });
       root.removeEventListener("touchstart", cancelForUserScroll, { capture: true });
+      root.removeEventListener("touchmove", cancelForUserScroll, { capture: true });
       root.removeEventListener("pointerdown", cancelForUserScroll, { capture: true });
       root.removeEventListener("scroll", handleScroll);
       root.removeEventListener("scrollend", handleScrollEnd);
@@ -339,12 +492,13 @@ export function useSettingsSectionNavigation(
         window.cancelAnimationFrame(scrollFrameRef.current);
         scrollFrameRef.current = null;
       }
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       endProgrammaticNavigation();
     };
-  }, [endProgrammaticNavigation, scheduleAnchorActiveSection, sections]);
+  }, [endProgrammaticNavigation, scheduleAnchorActiveSection, scheduleLayoutCorrection, sections]);
 
   const handleSectionClick = useCallback((id: SettingsSectionId) => {
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${id}`);
     beginProgrammaticNavigation(id);
   }, [beginProgrammaticNavigation]);
 
@@ -376,12 +530,13 @@ function SettingsSectionNavLink({
       aria-current={active ? "location" : undefined}
       onClick={handleClick}
       onPointerEnter={() => onSectionIntent?.(section.id)}
+      onPointerDown={() => onSectionIntent?.(section.id)}
       onFocus={() => onSectionIntent?.(section.id)}
       className={cn(
         "group relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         variant === "desktop"
           ? "block rounded-lg px-3 py-2 text-sm font-medium"
-          : "block rounded-lg px-3 py-2 text-sm font-medium",
+          : "flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium",
         active && variant === "desktop" && "bg-primary/10 text-primary",
         !active && variant === "desktop" && "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
         active && variant === "mobileDrawer" && "bg-primary/10 text-primary",
@@ -469,7 +624,7 @@ export function MobileSettingsSectionDrawer({
             </SideDrawerDescription>
           </div>
           <SideDrawerClose asChild>
-            <Button variant="ghost" size="icon" className="-mr-2 -mt-2 h-10 w-10 text-muted-foreground">
+            <Button variant="ghost" size="icon" className="-mr-2 -mt-2 h-11 w-11 text-muted-foreground">
               <X className="h-4 w-4" />
               <span className="sr-only">{t("common.close")}</span>
             </Button>
@@ -516,7 +671,7 @@ function MobileSettingsPageHeader() {
             type="button"
             variant="ghost"
             size="icon"
-            className={settingsLayout.mobileHeaderTrigger}
+            className={cn(settingsLayout.mobileHeaderTrigger, "min-h-11 min-w-11")}
             aria-label={t("settings.sectionNavOpen")}
           >
             <Menu className="h-4 w-4" />

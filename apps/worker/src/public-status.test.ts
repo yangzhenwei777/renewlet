@@ -1,5 +1,6 @@
 // Worker 公开展示页测试保护 bearer token、字段 allowlist、隐藏过滤和 R2 私有资产代理边界。
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
+import labelFixtures from "../../../packages/shared/src/contract-fixtures/config-label-locales.json";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSuccessData } from "./api-test-helpers";
 import {
@@ -155,22 +156,26 @@ class PublicStatusTestStatement {
 
   async run(): Promise<D1Result> {
     if (this.sql.includes("INSERT INTO public_status_pages")) {
-      const [id, userId, token, showPrices, createdAt, updatedAt] = this.values as [string, string, string, number, string, string];
+      const [id, userId, token, showPrices, hideExpired, hideLifetime, createdAt, updatedAt] = this.values as [string, string, string, number, number, number, string, string];
       this.state.pages.push({
         id,
         user_id: userId,
         token,
         show_prices: showPrices,
+        hide_expired: hideExpired,
+        hide_lifetime: hideLifetime,
         created_at: createdAt,
         updated_at: updatedAt,
       });
       return d1Result([]);
     }
     if (this.sql.includes("UPDATE public_status_pages SET show_prices")) {
-      const [showPrices, updatedAt, userId] = this.values as [number, string, string];
+      const [showPrices, hideExpired, hideLifetime, updatedAt, userId] = this.values as [number, number, number, string, string];
       const page = this.state.pages.find((item) => item.user_id === userId);
       if (page) {
         page.show_prices = showPrices;
+        page.hide_expired = hideExpired;
+        page.hide_lifetime = hideLifetime;
         page.updated_at = updatedAt;
       }
       return d1Result([]);
@@ -207,6 +212,8 @@ function publicPage(overrides: Partial<PublicStatusPageRow> = {}): PublicStatusP
     user_id: USER_ID,
     token: TOKEN,
     show_prices: 0,
+    hide_expired: 0,
+    hide_lifetime: 0,
     created_at: "2026-06-07T00:00:00.000Z",
     updated_at: "2026-06-07T00:00:00.000Z",
     ...overrides,
@@ -310,7 +317,7 @@ describe("public status worker handlers", () => {
     const env = createEnv();
 
     const disabledResponse = await readPublicStatusPage(authorizedRequest("/api/app/public-status-page"), env);
-    expect(await readSuccessData(disabledResponse)).toEqual({ publicStatusPage: { enabled: false, showPrices: false } });
+    expect(await readSuccessData(disabledResponse)).toEqual({ publicStatusPage: { enabled: false, showPrices: false, hideExpired: false, hideLifetime: false } });
 
     const createResponse = await createPublicStatusPage(authorizedRequest("/api/app/public-status-page", {
       method: "POST",
@@ -321,19 +328,33 @@ describe("public status worker handlers", () => {
     expect(created.publicStatusPage).toMatchObject({
       enabled: true,
       pageUrl: `https://renewlet.test/status/${TOKEN}`,
-      showPrices: false,
+      showPrices: false, hideExpired: false, hideLifetime: false,
     });
     expect(created.publicStatusPage).not.toHaveProperty("token");
 
     const updateResponse = await updatePublicStatusPage(authorizedRequest("/api/app/public-status-page", {
       method: "PATCH",
-      body: JSON.stringify({ showPrices: true }),
+      body: JSON.stringify({ showPrices: true, hideExpired: false, hideLifetime: false }),
     }), env);
     expect(await readSuccessData(updateResponse)).toMatchObject({ publicStatusPage: { enabled: true, showPrices: true } });
 
     const deleteResponse = await deletePublicStatusPage(authorizedRequest("/api/app/public-status-page", { method: "DELETE" }), env);
     expect(deleteResponse.status).toBe(200);
     await expect(readPublicStatus(publicRequest(`/api/public/status/${TOKEN}`), env, TOKEN)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it.each(labelFixtures.filter(({ key }) => key?.startsWith("category.") || key === null))("renders Russian public labels for $name", async ({ labels, expected, value }) => {
+    const env = createEnv({
+      pages: [publicPage()],
+      subscriptions: [subscriptionRow({ category: value })],
+      customConfigJson: JSON.stringify({
+        categories: [{ id: value, value, labels }],
+        statuses: [], paymentMethods: [], currencies: [],
+      }),
+    });
+    const response = await readPublicStatus(publicRequest(`/api/public/status/${TOKEN}`, "ru-RU"), env, TOKEN);
+    const data = await readSuccessData<{ subscriptions: Array<{ category: { label: string } }> }>(response);
+    expect(data.subscriptions[0]?.category.label).toBe(expected["ru-RU"]);
   });
 
   it("returns a minimal public allowlist, filters hidden subscriptions, and only includes prices when enabled", async () => {

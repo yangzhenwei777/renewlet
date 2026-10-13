@@ -1,7 +1,9 @@
+import { persistedCloudBackupErrorMessage, stableCloudBackupErrorCode } from "./cloud-backup-errors";
 import {
   CLOUD_BACKUP_DEFAULT_RETENTION,
   CLOUD_BACKUP_DEFAULT_SCHEDULE_TIME,
   CLOUD_BACKUP_DEFAULT_SCHEDULE_WEEKDAY,
+  CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS,
   cloudBackupConfigPayloadSchema,
   cloudBackupConfigUpdateSchema,
   cloudBackupCreateSnapshotRequestSchema,
@@ -36,6 +38,7 @@ import {
   WebDAVCloudBackupClient,
   sanitizeDownloadFilename,
   type CloudBackupRemoteClient,
+  type CloudBackupPagedRemoteClient,
 } from "./cloud-backup-remote";
 import { cloudBackupProviderFromRequest, cloudBackupProviderParameterError } from "./cloud-backup-provider";
 import { cloudBackupNextRunAt, cloudBackupTargetDue, createDefaultFallbackSettings } from "./cloud-backup-schedule";
@@ -43,6 +46,10 @@ import { deleteCloudBackupFromTargets, downloadCloudBackupFromTargets, type Clou
 import { buildCloudBackupSnapshotPayload, verifySnapshotBytes, type CloudBackupSnapshotPayload } from "./cloud-backup-export";
 import { bytesForFetchBody, parseJsonObject } from "./cloud-backup-utils";
 import type { CloudBackupTargetRow, Env, UserRow } from "./types";
+import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
+import { CronBudgetExceeded, type CronBudget } from "./cron-budget";
+import { readCloudBackupCursor, runCloudBackupStep } from "./cloud-backup-cron";
+import { WebDAVOperationLimitExceeded } from "./cloud-backup-webdav";
 
 const CLOUD_BACKUP_COLUMNS = [
   "user_id",
@@ -65,7 +72,6 @@ const CLOUD_BACKUP_COLUMNS = [
 
 const CLOUD_BACKUP_CONFIG_COLUMNS = CLOUD_BACKUP_COLUMNS.join(", ");
 const CLOUD_BACKUP_LOCK_MS = 15 * 60 * 1000;
-const CLOUD_BACKUP_PAGE_SIZE = 200;
 
 type StoredCloudBackupConfig = {
   webdav?: CloudBackupWebDavConfig;
@@ -133,7 +139,7 @@ export async function testCloudBackupConfig(request: Request, env: Env): Promise
   const target = targetFromUpdate(auth.user.id, body, current);
   const client = remoteClientForTarget(target, locale);
   await client.test().catch((error: unknown) => {
-    throw cloudBackupOperationError(locale, "cloudBackup.testFailed", "CLOUD_BACKUP_TEST_FAILED", error);
+    throw cloudBackupOperationError(locale, "cloudBackup.testFailed", error);
   });
   return successJson(cloudBackupTestPayloadSchema.parse({
     checkedAt: nowIso(),
@@ -145,12 +151,12 @@ export async function listCloudBackups(request: Request, env: Env): Promise<Resp
   const locale = requestLocale(request);
   const providerQuery = cloudBackupProviderFromRequest(request, locale);
   if (!providerQuery.hasProvider) {
-    throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_REQUIRED", "provider_required", "Use provider=webdav or provider=s3.");
+    throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_REQUIRED", "Use provider=webdav or provider=s3.");
   }
   // 列表是 provider-scoped API；当前 tab 只访问当前目标，另一个目标的上游错误不能污染本响应。
   const target = await configuredCloudBackupTargetForProvider(env, auth.user.id, providerQuery.provider, locale);
   const manifests = await target.client.list().catch((error: unknown) => {
-    throw cloudBackupOperationError(locale, "cloudBackup.listFailed", "CLOUD_BACKUP_LIST_FAILED", error);
+    throw cloudBackupOperationError(locale, "cloudBackup.listFailed", error);
   });
   const snapshots: CloudBackupSnapshot[] = snapshotsFromManifests(target.provider, manifests);
   snapshots.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -166,7 +172,7 @@ export async function createCloudBackup(request: Request, env: Env): Promise<Res
     return successJson(cloudBackupCreateSnapshotPayloadSchema.parse({ snapshots }), { status: 201 });
   } catch (error) {
     await markCloudBackupStatus(env, auth.user.id, body.provider, "failed", persistedCloudBackupErrorMessage(error));
-    throw cloudBackupOperationError(locale, "cloudBackup.createFailed", "CLOUD_BACKUP_CREATE_FAILED", error);
+    throw cloudBackupOperationError(locale, "cloudBackup.createFailed", error);
   }
 }
 
@@ -175,7 +181,7 @@ async function readCloudBackupCreateRequest(request: Request, locale: AppLocale)
     return await readJson(request, cloudBackupCreateSnapshotRequestSchema, locale);
   } catch (error) {
     if (error instanceof HttpError && error.code === "INVALID_PAYLOAD") {
-      throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_INVALID", "provider_invalid", `Use JSON body {"provider":"webdav"} or {"provider":"s3"}.`);
+      throw cloudBackupProviderParameterError(locale, "CLOUD_BACKUP_PROVIDER_INVALID", `Use JSON body {"provider":"webdav"} or {"provider":"s3"}.`);
     }
     throw error;
   }
@@ -192,14 +198,14 @@ export async function downloadCloudBackup(request: Request, env: Env, id: string
   if (providerQuery.hasProvider) {
     const client = await configuredCloudBackupClientForProvider(env, auth.user.id, providerQuery.provider, locale);
     ({ content, manifest } = await client.download(snapshotId).catch((error: unknown) => {
-      throw cloudBackupOperationError(locale, "cloudBackup.downloadFailed", "CLOUD_BACKUP_DOWNLOAD_FAILED", error);
+      throw cloudBackupOperationError(locale, "cloudBackup.downloadFailed", error);
     }));
     if (!(await verifySnapshotBytes(content, manifest))) {
       throw new HttpError(400, serverText(locale, "cloudBackup.checksumFailed"), "CLOUD_BACKUP_CHECKSUM_FAILED");
     }
   } else {
     ({ content, manifest } = await downloadCloudBackupWithoutProvider(env, auth.user.id, locale, snapshotId).catch((error: unknown) => {
-      throw cloudBackupOperationError(locale, "cloudBackup.downloadFailed", "CLOUD_BACKUP_DOWNLOAD_FAILED", error);
+      throw cloudBackupOperationError(locale, "cloudBackup.downloadFailed", error);
     }));
   }
 
@@ -221,84 +227,73 @@ export async function deleteCloudBackup(request: Request, env: Env, id: string):
   if (providerQuery.hasProvider) {
     const client = await configuredCloudBackupClientForProvider(env, auth.user.id, providerQuery.provider, locale);
     await client.delete(snapshotId).catch((error: unknown) => {
-      throw cloudBackupOperationError(locale, "cloudBackup.deleteFailed", "CLOUD_BACKUP_DELETE_FAILED", error);
+      throw cloudBackupOperationError(locale, "cloudBackup.deleteFailed", error);
     });
   } else {
     await deleteCloudBackupWithoutProvider(env, auth.user.id, locale, snapshotId).catch((error: unknown) => {
       const messageKey = error instanceof CloudBackupRemoteError && error.code === "CLOUD_BACKUP_PROVIDER_REQUIRED"
         ? "cloudBackup.providerRequired"
         : "cloudBackup.deleteFailed";
-      throw cloudBackupOperationError(locale, messageKey, "CLOUD_BACKUP_DELETE_FAILED", error);
+      throw cloudBackupOperationError(locale, messageKey, error);
     });
   }
   return ok();
 }
 
-export async function runDueCloudBackups(env: Env, now = new Date()): Promise<void> {
-  const groups = new Map<string, { user: UserRow; targets: ConfiguredCloudBackupTarget[] }>();
-  const seenTargets = new Set<string>();
-  for (;;) {
-    // next_run_at_utc 是 scheduled 热路径索引；NULL 只表示迁移/保存前待修复，仍需进入单目标 due 判断。
-    const rows = await env.DB.prepare(`
-      SELECT ${CLOUD_BACKUP_CONFIG_COLUMNS} FROM cloud_backup_targets
-      WHERE schedule_enabled = 1 AND (next_run_at_utc IS NULL OR next_run_at_utc <= ?)
-      ORDER BY next_run_at_utc IS NOT NULL, next_run_at_utc ASC, updated_at ASC
-      LIMIT ?
-    `).bind(now.toISOString(), CLOUD_BACKUP_PAGE_SIZE).all<CloudBackupTargetRow>();
-    const runnableRows = rows.results.filter((row) => {
-      const key = `${row.user_id}:${row.provider}`;
-      if (seenTargets.has(key)) return false;
-      seenTargets.add(key);
-      return true;
-    });
-    if (runnableRows.length === 0) break;
-    for (const row of runnableRows) {
-      const target = rowToTarget(row);
-      const user = await env.DB.prepare("SELECT id, email, name, role, banned, ban_reason, password_hash, reset_token_hash, reset_token_expires_at, created_at, updated_at FROM users WHERE id = ? LIMIT 1")
-        .bind(target.userId)
-        .first<UserRow>();
-      if (!user || user.banned === 1) {
-        await markCloudBackupStatus(env, target.userId, target.provider, "failed", "CLOUD_BACKUP_USER_UNAVAILABLE");
-        continue;
-      }
-      const settings = await getSettings(env, target.userId).catch(() => createDefaultFallbackSettings());
-      if (!cloudBackupTargetDue(target, settings.timezone, now)) {
-        await updateCloudBackupNextRun(env, target, settings.timezone, now);
-        continue;
-      }
-      if (!(await acquireCloudBackupLock(env, target.userId, target.provider, now))) continue;
-      try {
-        const configuredTarget = configuredTargetFromResolvedTarget(target, DEFAULT_SERVER_I18N_LOCALE);
-        const group = groups.get(target.userId) ?? { user, targets: [] };
-        group.targets.push(configuredTarget);
-        groups.set(target.userId, group);
-      } catch (error) {
-        // 配置/密钥错误是目标级失败；保持 due 时间不推进，让用户修正配置前仍保留可见失败状态。
-        await markCloudBackupStatus(env, target.userId, target.provider, "failed", persistedCloudBackupErrorMessage(error));
-      }
-    }
-    if (rows.results.length < CLOUD_BACKUP_PAGE_SIZE) break;
+export async function runScheduledCloudBackupForUser(
+  env: Env,
+  userId: string,
+  provider: CloudBackupProvider,
+  scheduledAt: Date,
+  now: Date,
+  settings: ApiAppSettings,
+  budget: CronBudget,
+  checkpointDB: D1Database,
+): Promise<boolean> {
+  const target = await getCloudBackupTarget(env, userId, provider);
+  if (!target.policy.scheduleEnabled) return true;
+  const stored = await env.DB.prepare("SELECT cron_cursor_json FROM cloud_backup_targets WHERE user_id = ? AND provider = ?")
+    .bind(userId, provider).first<{ cron_cursor_json: string }>();
+  if (!stored) return true;
+  if (stored.cron_cursor_json === "{}" && !cloudBackupTargetDue(target, settings.timezone, scheduledAt)) {
+    await env.DB.prepare("UPDATE cloud_backup_targets SET next_run_at_utc = ? WHERE user_id = ? AND provider = ? AND updated_at = ?")
+      .bind(cloudBackupNextRunAt(target, settings.timezone, scheduledAt), userId, provider, target.updatedAt).run();
+    return true;
   }
-  for (const [userId, group] of groups) {
-    if (group.targets.length === 0) continue;
-    let payload: CloudBackupSnapshotPayload;
-    try {
-      payload = await buildCloudBackupSnapshotPayload(env, userId);
-    } catch (error) {
-      for (const target of group.targets) {
-        // ZIP 构建失败影响同一用户本轮所有目标，但不推进 next_run_at，保持原有每分钟重试语义。
-        await markCloudBackupStatus(env, userId, target.provider, "failed", persistedCloudBackupErrorMessage(error));
-      }
-      continue;
-    }
-    for (const target of group.targets) {
-      try {
-        await uploadCloudBackupSnapshotToTarget(env, userId, payload, target);
-      } catch (error) {
-        // 远端上传失败只落 provider 状态；成功目标仍独立推进，失败目标下一分钟继续 due。
-        await markCloudBackupStatus(env, userId, target.provider, "failed", persistedCloudBackupErrorMessage(error));
-      }
-    }
+  // provider锁只覆盖当前工作片；其它provider和下一天的通知不等待完整远端保留策略结束。
+  const claimToken = await acquireCloudBackupLock(env, userId, provider, now, target.updatedAt, stored.cron_cursor_json);
+  if (!claimToken) return true;
+  const lockedUntil = new Date(now.getTime() + CLOUD_BACKUP_LOCK_MS).toISOString();
+  try {
+    const outcome = await runCloudBackupStep({
+      env, userId, provider, client: remoteClientForTarget(target, DEFAULT_SERVER_I18N_LOCALE, budget),
+      cursor: readCloudBackupCursor(stored.cron_cursor_json), retention: target.policy.retention, now, budget,
+    });
+    const complete = outcome.kind === "complete";
+    const backupAt = complete ? outcome.createdAt : target.lastBackupAt;
+    const nextRun = complete
+      ? cloudBackupNextRunAt({ ...target, lastBackupAt: backupAt }, settings.timezone, now)
+      : target.nextRunAt;
+    const result = await checkpointDB.prepare(`UPDATE cloud_backup_targets
+      SET cron_cursor_json = ?, locked_until = NULL, cron_claim_token = NULL, last_backup_at = ?, next_run_at_utc = ?,
+          last_status = ?, last_error = ?, updated_at = ?
+      WHERE user_id = ? AND provider = ? AND locked_until = ? AND cron_cursor_json = ? AND cron_claim_token = ?`)
+      .bind(complete ? "{}" : JSON.stringify(outcome.cursor), backupAt, nextRun,
+        complete ? "success" : outcome.failure ? "failed" : target.lastStatus, complete ? null : outcome.failure ?? target.lastError, nowIso(),
+        userId, provider, lockedUntil, stored.cron_cursor_json, claimToken).run();
+    return result.meta.changes === 1;
+  } catch (error) {
+    // 游标保留在失败之前的阶段；已上传的固定ID不会因为保留策略失败而重新生成另一份快照。
+    const message = error instanceof CronBudgetExceeded ? error.message : persistedCloudBackupErrorMessage(error);
+    // 单操作已用满完整外发额度时关闭当前目标的定时开关；保留断点，修正配置后由用户重新开启。
+    const pause = error instanceof WebDAVOperationLimitExceeded;
+    const result = await checkpointDB.prepare(`UPDATE cloud_backup_targets
+      SET locked_until = NULL, cron_claim_token = NULL, last_status = 'failed', last_error = ?, updated_at = ?,
+          schedule_enabled = CASE WHEN ? THEN 0 ELSE schedule_enabled END,
+          next_run_at_utc = CASE WHEN ? THEN NULL ELSE next_run_at_utc END
+      WHERE user_id = ? AND provider = ? AND locked_until = ? AND cron_cursor_json = ? AND cron_claim_token = ?`)
+      .bind(message, nowIso(), boolToInt(pause), boolToInt(pause), userId, provider, lockedUntil, stored.cron_cursor_json, claimToken).run();
+    return result.meta.changes === 1;
   }
 }
 
@@ -329,17 +324,17 @@ function remoteClientForProvider(config: ResolvedCloudBackupConfig, provider: Cl
   return remoteClientForTarget(target, locale);
 }
 
-function remoteClientForTarget(target: ResolvedCloudBackupTarget, locale: AppLocale): CloudBackupRemoteClient {
+function remoteClientForTarget(target: ResolvedCloudBackupTarget, locale: AppLocale, budget?: CronBudget): CloudBackupPagedRemoteClient {
   if (target.provider === "webdav") {
     if (!target.webdav) throw new HttpError(400, serverText(locale, "cloudBackup.configIncomplete"), "CLOUD_BACKUP_WEBDAV_REQUIRED");
     if (!target.credential.webdavPassword?.trim()) throw new HttpError(400, serverText(locale, "cloudBackup.configIncomplete"), "CLOUD_BACKUP_WEBDAV_CREDENTIAL_REQUIRED");
-    return new WebDAVCloudBackupClient(target.webdav, target.credential.webdavPassword);
+    return new WebDAVCloudBackupClient(target.webdav, target.credential.webdavPassword, budget);
   }
   if (!target.s3) throw new HttpError(400, serverText(locale, "cloudBackup.configIncomplete"), "CLOUD_BACKUP_S3_REQUIRED");
   if (!target.s3.accessKeyId?.trim() || !target.credential.s3SecretAccessKey?.trim()) {
     throw new HttpError(400, serverText(locale, "cloudBackup.configIncomplete"), "CLOUD_BACKUP_S3_CREDENTIAL_REQUIRED");
   }
-  return new S3CloudBackupClient(target.s3, target.credential.s3SecretAccessKey);
+  return new S3CloudBackupClient(target.s3, target.credential.s3SecretAccessKey, budget);
 }
 
 function cloudBackupTargetsForConfig(config: ResolvedCloudBackupConfig): CloudBackupTarget[] {
@@ -395,7 +390,7 @@ async function saveCloudBackupConfig(env: Env, userId: string, body: CloudBackup
   const timestamp = nowIso();
   const settings = await getSettings(env, userId).catch(() => createDefaultFallbackSettings());
   const nextRunAt = cloudBackupNextRunAt(next, settings.timezone, new Date());
-  // user+provider 是 D1 唯一写入边界；credential_json 永远独立存储并由 DTO 脱敏成 credentialSet。
+  // user+provider 是唯一写入边界；配置更新使旧游标/锁失效，旧执行者不能覆盖新目标。
   await env.DB.prepare(`
     INSERT INTO cloud_backup_targets (
       user_id, provider, config_json, credential_json, schedule_enabled, schedule_frequency, schedule_time,
@@ -410,6 +405,8 @@ async function saveCloudBackupConfig(env: Env, userId: string, body: CloudBackup
       schedule_weekday = excluded.schedule_weekday,
       retention = excluded.retention,
       next_run_at_utc = excluded.next_run_at_utc,
+      cron_cursor_json = '{}',
+      locked_until = NULL, cron_claim_token = NULL,
       updated_at = excluded.updated_at
   `).bind(
     userId,
@@ -564,7 +561,8 @@ async function deleteCloudBackupWithoutProvider(env: Env, userId: string, locale
 }
 
 async function enforceRetention(client: CloudBackupRemoteClient, retention: number, keepId: string): Promise<void> {
-  const manifests = await client.list().catch(() => []);
+  // retention 使用与设置页相同的严格列表语义；列表或 manifest 损坏时必须保留阶段错误，不能把成功上传伪装成完整成功。
+  const manifests = await client.list();
   manifests.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   for (const [index, manifest] of manifests.entries()) {
     if (index < retention || manifest.id === keepId) continue;
@@ -578,7 +576,7 @@ async function markCloudBackupSuccess(env: Env, userId: string, provider: CloudB
   const nextRunAt = cloudBackupNextRunAt({ ...target, lastBackupAt: backupAt }, settings.timezone, new Date(backupAt));
   await env.DB.prepare(`
     UPDATE cloud_backup_targets
-    SET last_backup_at = ?, last_status = 'success', last_error = NULL, locked_until = NULL, next_run_at_utc = ?, updated_at = ?
+    SET last_backup_at = ?, last_status = 'success', last_error = NULL, locked_until = NULL, cron_claim_token = NULL, next_run_at_utc = ?, updated_at = ?
     WHERE user_id = ? AND provider = ?
   `).bind(backupAt, nextRunAt, nowIso(), userId, provider).run();
 }
@@ -586,28 +584,21 @@ async function markCloudBackupSuccess(env: Env, userId: string, provider: CloudB
 async function markCloudBackupStatus(env: Env, userId: string, provider: CloudBackupProvider, status: "idle" | "success" | "failed", message: string): Promise<void> {
   await env.DB.prepare(`
     UPDATE cloud_backup_targets
-    SET last_status = ?, last_error = ?, locked_until = NULL, updated_at = ?
+    SET last_status = ?, last_error = ?, locked_until = NULL, cron_claim_token = NULL, updated_at = ?
     WHERE user_id = ? AND provider = ?
   `).bind(status, message.slice(0, 2000), nowIso(), userId, provider).run();
 }
 
-async function acquireCloudBackupLock(env: Env, userId: string, provider: CloudBackupProvider, now: Date): Promise<boolean> {
+async function acquireCloudBackupLock(env: Env, userId: string, provider: CloudBackupProvider, now: Date, version: string | null, cursor: string): Promise<string | null> {
   const lockedUntil = new Date(now.getTime() + CLOUD_BACKUP_LOCK_MS).toISOString();
-  // D1 没有 SELECT FOR UPDATE；provider 级条件 UPDATE 是 scheduled tick 防重入的最终锁边界。
+  const token = crypto.randomUUID();
+  // 配置版本与进度一起抢占；读取后被用户改过的旧目标不能发送或覆盖新配置。
   const result = await env.DB.prepare(`
-    UPDATE cloud_backup_targets SET locked_until = ?, updated_at = ?
-    WHERE user_id = ? AND provider = ? AND (locked_until IS NULL OR locked_until = '' OR locked_until <= ?)
-  `).bind(lockedUntil, nowIso(), userId, provider, now.toISOString()).run();
-  return (result.meta.changes ?? 0) > 0;
-}
-
-async function updateCloudBackupNextRun(env: Env, target: ResolvedCloudBackupTarget, timezone: string, now: Date): Promise<void> {
-  // next_run_at 是 Cron due-index；非 due 旧行只推进索引，不改 last_status，避免把用户可见审计状态伪装成成功。
-  await env.DB.prepare(`
-    UPDATE cloud_backup_targets
-    SET next_run_at_utc = ?, updated_at = ?
-    WHERE user_id = ? AND provider = ?
-  `).bind(cloudBackupNextRunAt(target, timezone, now), nowIso(), target.userId, target.provider).run();
+    UPDATE cloud_backup_targets SET locked_until = ?, cron_claim_token = ?, updated_at = ?
+    WHERE user_id = ? AND provider = ? AND updated_at = ? AND cron_cursor_json = ?
+      AND (locked_until IS NULL OR locked_until = '' OR locked_until <= ?)
+  `).bind(lockedUntil, token, nowIso(), userId, provider, version, cursor, now.toISOString()).run();
+  return result.meta.changes === 1 ? token : null;
 }
 
 function snapshotsFromManifests(provider: CloudBackupProvider, manifests: CloudBackupSnapshotManifest[]): CloudBackupSnapshot[] {
@@ -627,24 +618,22 @@ function snapshotFromManifest(provider: CloudBackupProvider, manifest: CloudBack
   };
 }
 
-function cloudBackupOperationError(locale: AppLocale, messageKey: ServerTextKey, fallbackCode: string, error: unknown): HttpError {
+function cloudBackupOperationError(locale: AppLocale, messageKey: ServerTextKey, error: unknown): HttpError {
   if (error instanceof HttpError) return error;
   if (error instanceof CloudBackupRemoteError) {
-    // 操作层 code 保持稳定，provider 细节只放 details；否则测试连接/列表/下载的错误语义会被底层 SDK code 打散。
-    return new HttpError(400, serverText(locale, messageKey), fallbackCode, error.details);
+    // 远端阶段码直接穿过 API 边界；只有展示文案本地化，避免把真实失败阶段改写成动作错误。
+    return new HttpError(400, serverText(locale, messageKey), error.code, error.details);
   }
-  return new HttpError(400, serverText(locale, messageKey), fallbackCode, cloudBackupLocalErrorDetails(error));
-}
-
-function persistedCloudBackupErrorMessage(error: unknown): string {
-  if (error instanceof CloudBackupRemoteError) {
-    return error.code;
-  }
-  return "local_sdk_error";
+  const code = stableCloudBackupErrorCode(errorMessage(error)) ?? "CLOUD_BACKUP_LOCAL_OPERATION_FAILED";
+  return new HttpError(400, serverText(locale, messageKey), code, cloudBackupLocalErrorDetails(error));
 }
 
 function cloudBackupLocalErrorDetails(error: unknown): CloudBackupErrorDetails {
-  return { rawResponseText: errorMessage(error) };
+  return {
+    operation: "local",
+    target: "cloud backup",
+    clientMessage: errorMessage(error).slice(0, CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS),
+  };
 }
 
 function errorMessage(error: unknown): string {

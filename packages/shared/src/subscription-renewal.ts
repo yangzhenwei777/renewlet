@@ -38,7 +38,9 @@ export interface SubscriptionRenewalResult {
   status: SubscriptionStatus;
 }
 
-const MAX_ADVANCE_CYCLES = 20_000;
+const MAX_CALENDAR_ADVANCE_CYCLES = 20_000;
+
+type BillingPeriod = { unit: "day" | "month"; count: number };
 
 function hasRenewalAnchor(input: Pick<AdvanceBillingDateInput, "autoCalculateNextBillingDate" | "nextBillingDate" | "startDate">): boolean {
   return input.autoCalculateNextBillingDate
@@ -59,7 +61,7 @@ export function isAutoRenewEligible(subscription: SubscriptionRenewalInput, toda
     isValidDateOnly(subscription.nextBillingDate) &&
     hasRenewalAnchor(subscription) &&
     isValidDateOnly(today) &&
-    compareDateOnly(subscription.nextBillingDate, today) < 0
+    subscription.nextBillingDate < today
   );
 }
 
@@ -111,7 +113,8 @@ export function advanceBillingDate(
   assertRenewableBillingCycle(input.billingCycle);
   const original = assertDateOnly(input.nextBillingDate);
   const anchor = assertDateOnly(input.autoCalculateNextBillingDate ? input.startDate ?? "" : input.nextBillingDate);
-  const threshold = mode === "manual" && compareDateOnly(original, today) > 0 ? original : assertDateOnly(today);
+  const reference = assertDateOnly(today);
+  const threshold = mode === "manual" && original > reference ? original : reference;
   const strict = mode === "manual";
 
   return firstCycleDateAfter(anchor, input, threshold, strict);
@@ -151,25 +154,9 @@ export function addBillingCycles(
   customCycleUnit?: CustomCycleUnit | null | undefined,
 ): DateOnly {
   const start = toPlainDate(date);
+  if (cycle === "one-time") return fromPlainDate(start);
   const count = Math.max(1, Math.trunc(cycleCount));
-  switch (cycle) {
-    case "weekly":
-      return fromPlainDate(start.add({ weeks: count }));
-    case "monthly":
-      return fromPlainDate(start.add({ months: count }));
-    case "quarterly":
-      return fromPlainDate(start.add({ months: 3 * count }));
-    case "semi-annual":
-      return fromPlainDate(start.add({ months: 6 * count }));
-    case "annual":
-      return fromPlainDate(start.add({ years: count }));
-    case "custom": {
-      const custom = requireCustomBillingCycle(customDays, customCycleUnit);
-      return addCustomBillingCycles(start, custom.count * count, custom.unit);
-    }
-    case "one-time":
-      return fromPlainDate(start);
-  }
+  return fromPlainDate(addPeriod(start, billingPeriod(cycle, customDays, customCycleUnit), count));
 }
 
 function firstCycleDateAfter(
@@ -178,39 +165,56 @@ function firstCycleDateAfter(
   threshold: string,
   strict: boolean,
 ): DateOnly {
-  const initialCycles = initialCycleCount(anchor, input, threshold, strict);
-  let cycleCount = Math.max(1, initialCycles);
-  for (let attempts = 0; attempts < MAX_ADVANCE_CYCLES; attempts += 1) {
-    const candidate = addBillingCycles(anchor, input.billingCycle, cycleCount, input.customDays, input.customCycleUnit);
-    const comparison = compareDateOnly(candidate, threshold);
-    if (strict ? comparison > 0 : comparison >= 0) return candidate;
-    cycleCount += 1;
+  assertRenewableBillingCycle(input.billingCycle);
+  const start = toPlainDate(anchor);
+  const target = toPlainDate(threshold);
+  const period = billingPeriod(input.billingCycle, input.customDays, input.customCycleUnit);
+  const distance = period.unit === "day"
+    ? start.until(target, { largestUnit: "day" }).days + Number(strict)
+    : (target.year - start.year) * 12 + target.month - start.month;
+  let cycles = Math.max(1, Math.ceil(distance / period.count));
+  assertCalendarAdvanceLimit(period, cycles);
+  let candidate = addPeriod(start, period, cycles);
+  // 月份差只定位期数；每次从原锚点用 Temporal 夹取月底，不能从已夹取的二月日期滚动累计。
+  // 候选已在目标月份或之后，最多再推进一期即可满足日与严格边界，历史逾期不会线性放大 CPU。
+  const comparison = Temporal.PlainDate.compare(candidate, target);
+  if (strict ? comparison <= 0 : comparison < 0) {
+    cycles += 1;
+    assertCalendarAdvanceLimit(period, cycles);
+    candidate = addPeriod(start, period, cycles);
   }
-  // 保护异常自定义周期或脏数据，避免维护任务在单条订阅上无限循环占满 Worker/Go cron。
-  throw new Error("SUBSCRIPTION_RENEWAL_ADVANCE_LIMIT_EXCEEDED");
+  return fromPlainDate(candidate);
 }
 
-function initialCycleCount(
-  anchor: string,
-  input: AdvanceBillingDateInput,
-  threshold: string,
-  strict: boolean,
-): number {
-  const dayStep = exactDayStep(input);
-  if (!dayStep) return 1;
-  // 只有“固定天数”周期能直接跳到接近阈值的期数；月份/年份必须逐期推进以保留月末夹取语义。
-  const diff = toPlainDate(anchor).until(toPlainDate(threshold), { largestUnit: "day" }).days;
-  const adjusted = strict ? diff + 1 : diff;
-  return Math.max(1, Math.ceil(adjusted / dayStep));
+function billingPeriod(
+  cycle: Exclude<BillingCycle, "one-time">,
+  customDays?: number | null,
+  customCycleUnit?: CustomCycleUnit | null,
+): BillingPeriod {
+  switch (cycle) {
+    case "weekly": return { unit: "day", count: 7 };
+    case "monthly": return { unit: "month", count: 1 };
+    case "quarterly": return { unit: "month", count: 3 };
+    case "semi-annual": return { unit: "month", count: 6 };
+    case "annual": return { unit: "month", count: 12 };
+    case "custom": {
+      const { count, unit } = requireCustomBillingCycle(customDays, customCycleUnit);
+      return unit === "day" || unit === "week"
+        ? { unit: "day", count: count * (unit === "week" ? 7 : 1) }
+        : { unit: "month", count: count * (unit === "year" ? 12 : 1) };
+    }
+  }
 }
 
-function exactDayStep(input: Pick<AdvanceBillingDateInput, "billingCycle" | "customDays" | "customCycleUnit">): number | null {
-  if (input.billingCycle === "weekly") return 7;
-  if (input.billingCycle !== "custom") return null;
-  const custom = requireCustomBillingCycle(input.customDays, input.customCycleUnit);
-  if (custom.unit === "day") return custom.count;
-  if (custom.unit === "week") return custom.count * 7;
-  return null;
+function addPeriod(start: Temporal.PlainDate, period: BillingPeriod, cycles: number): Temporal.PlainDate {
+  return start.add(period.unit === "day" ? { days: period.count * cycles } : { months: period.count * cycles });
+}
+
+function assertCalendarAdvanceLimit(period: BillingPeriod, cycles: number): void {
+  // 保留 Go 与既有 TS 对超长日历周期追溯的拒绝边界；固定天数原本就允许直接跳过任意期数。
+  if (period.unit === "month" && cycles > MAX_CALENDAR_ADVANCE_CYCLES) {
+    throw new Error("SUBSCRIPTION_RENEWAL_ADVANCE_LIMIT_EXCEEDED");
+  }
 }
 
 /** custom 周期在迁移后的所有运行面都必须显式携带正整数数量与单位。 */
@@ -222,23 +226,6 @@ export function requireCustomBillingCycle(
     throw new Error("SUBSCRIPTION_CUSTOM_CYCLE_INVALID");
   }
   return { count: customDays, unit: customCycleUnit };
-}
-
-function addCustomBillingCycles(
-  start: Temporal.PlainDate,
-  count: number,
-  unit: CustomCycleUnit,
-): DateOnly {
-  switch (unit) {
-    case "week":
-      return fromPlainDate(start.add({ weeks: count }));
-    case "month":
-      return fromPlainDate(start.add({ months: count }));
-    case "year":
-      return fromPlainDate(start.add({ years: count }));
-    case "day":
-      return fromPlainDate(start.add({ days: count }));
-  }
 }
 
 function assertRenewableBillingCycle(cycle: BillingCycle): asserts cycle is Exclude<BillingCycle, "one-time"> {
@@ -260,8 +247,4 @@ function toPlainDate(value: string): Temporal.PlainDate {
 
 function fromPlainDate(value: Temporal.PlainDate): DateOnly {
   return assertDateOnly(value.toString());
-}
-
-function compareDateOnly(left: string, right: string): number {
-  return Temporal.PlainDate.compare(toPlainDate(left), toPlainDate(right));
 }

@@ -6,7 +6,11 @@
       "DOM.Iterable",
       "ES2022"
     ],
-    "types": ["vite/client"]
+    "types": [
+      "vite/client"
+    ],
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/typescript/app.tsbuildinfo"
   },
   "files": [
     "src/main.tsx",

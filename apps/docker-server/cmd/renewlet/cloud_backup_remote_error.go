@@ -1,27 +1,48 @@
 package main
 
-// 云备份上游响应只随当前认证错误返回给操作者；不能写入 last_error、日志、导出或备份包。
+// 云备份错误只描述一次真实的远端阶段；状态记录只保存 code，完整详情只随当前认证请求返回。
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 )
 
 type cloudBackupProviderResponse = upstreamProviderResponse
 
-// cloudBackupErrorDetails 复用 shared upstream 口径，只暴露 rawResponseText 给当前操作者。
 type cloudBackupErrorDetails struct {
-	RawResponseText *string `json:"rawResponseText,omitempty"`
+	Provider           string                       `json:"provider,omitempty"`
+	Operation          string                       `json:"operation"`
+	Target             string                       `json:"target"`
+	HTTPStatus         *int                         `json:"httpStatus,omitempty"`
+	HTTPStatusText     string                       `json:"httpStatusText,omitempty"`
+	ProviderCode       string                       `json:"providerCode,omitempty"`
+	ProviderMessage    string                       `json:"providerMessage,omitempty"`
+	ClientMessage      string                       `json:"clientMessage,omitempty"`
+	RequestID          string                       `json:"requestId,omitempty"`
+	RequiredCapability string                       `json:"requiredCapability,omitempty"`
+	Cleanup            []cloudBackupCleanupError    `json:"cleanup,omitempty"`
+	Attempts           []cloudBackupProviderAttempt `json:"attempts,omitempty"`
 }
 
-// cloudBackupProviderAttempt 描述一次 provider 尝试结果，用于“缺 provider 时自动查找”的失败汇总。
+type cloudBackupCleanupError struct {
+	Operation string `json:"operation"`
+	Target    string `json:"target"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+}
+
+// cloudBackupProviderAttempt 保留多目标解析中每个 provider 的原始阶段码，禁止拼接成不可解析的文本。
 type cloudBackupProviderAttempt struct {
-	Provider string
-	Code     string
-	Message  string
+	Provider string                   `json:"provider"`
+	Code     string                   `json:"code"`
+	Details  *cloudBackupErrorDetails `json:"details,omitempty"`
 }
 
-// cloudBackupRemoteError 标记远端 WebDAV/S3 失败，区别于本地 ZIP/manifest 校验错误。
 type cloudBackupRemoteError struct {
 	code    string
 	details *cloudBackupErrorDetails
@@ -34,82 +55,146 @@ func (err *cloudBackupRemoteError) Error() string {
 	return err.code
 }
 
-func cloudBackupRemoteHTTPError(code string, response *http.Response, secrets ...string) error {
-	return &cloudBackupRemoteError{
-		code:    code,
-		details: cloudBackupRemoteErrorDetails(code, response, secrets),
-	}
-}
-
-func cloudBackupRemoteHTTPErrorFromProviderResponse(code string, response *cloudBackupProviderResponse) error {
-	return &cloudBackupRemoteError{
-		code:    code,
-		details: cloudBackupRemoteErrorDetailsFromProviderResponse(code, response),
-	}
-}
-
-func cloudBackupProviderAttemptsError(code string, message string, attempts []cloudBackupProviderAttempt) error {
+func cloudBackupProviderAttemptsError(code string, attempts []cloudBackupProviderAttempt) error {
 	return &cloudBackupRemoteError{
 		code: code,
 		details: &cloudBackupErrorDetails{
-			RawResponseText: optionalCloudBackupString(cloudBackupProviderAttemptsText(message, attempts)),
+			Operation: "provider-resolution",
+			Target:    "configured cloud backup targets",
+			Attempts:  attempts,
 		},
 	}
 }
 
-func cloudBackupProviderAttemptFromError(provider string, fallbackCode string, fallbackReason string, err error) cloudBackupProviderAttempt {
+func cloudBackupProviderAttemptFromError(provider, fallbackCode string, err error) cloudBackupProviderAttempt {
 	if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil {
-		return cloudBackupProviderAttempt{Provider: provider, Code: remoteErr.code, Message: cloudBackupRawResponseText(remoteErr.details, fallbackReason)}
+		return cloudBackupProviderAttempt{Provider: provider, Code: remoteErr.code, Details: remoteErr.details}
 	}
 	return cloudBackupProviderAttempt{
 		Provider: provider,
 		Code:     fallbackCode,
-		Message:  err.Error(),
+		Details: &cloudBackupErrorDetails{
+			Operation:     "local",
+			Target:        "cloud backup",
+			ClientMessage: truncateCloudBackupDiagnostic(errorMessage(err)),
+		},
 	}
 }
 
-func cloudBackupLocalErrorDetails(err error) *cloudBackupErrorDetails {
-	return &cloudBackupErrorDetails{
-		RawResponseText: optionalCloudBackupString(err.Error()),
+func cloudBackupLocalErrorDetails(provider, operation, target, message string) *cloudBackupErrorDetails {
+	details := &cloudBackupErrorDetails{
+		Operation:     strings.TrimSpace(operation),
+		Target:        cloudBackupTargetSummary(target),
+		ClientMessage: truncateCloudBackupDiagnostic(message),
 	}
-}
-
-func cloudBackupRemoteErrorDetails(code string, response *http.Response, secrets []string) *cloudBackupErrorDetails {
-	providerResponse := cloudBackupProviderResponseFromHTTPResponse(response, secrets)
-	return cloudBackupRemoteErrorDetailsFromProviderResponse(code, providerResponse)
-}
-
-func cloudBackupRemoteErrorDetailsFromProviderResponse(code string, providerResponse *cloudBackupProviderResponse) *cloudBackupErrorDetails {
-	message := code
-	if providerResponse != nil && providerResponse.Body != nil {
-		message = *providerResponse.Body
-	} else if providerResponse != nil && providerResponse.StatusText != nil {
-		message = *providerResponse.StatusText
+	if provider = strings.TrimSpace(provider); provider != "" && provider != "local" {
+		details.Provider = provider
 	}
-	return &cloudBackupErrorDetails{
-		RawResponseText: optionalCloudBackupString(message),
+	return details
+}
+
+func cloudBackupRemoteErrorDetails(provider, operation, target string, response *cloudBackupProviderResponse, clientMessage string) *cloudBackupErrorDetails {
+	// 远端正文与 SDK/网络异常各自保留，HTTP 2xx 不能抹掉本地解析失败的原因。
+	details := cloudBackupLocalErrorDetails(provider, operation, target, clientMessage)
+	if response != nil {
+		details.HTTPStatus = response.Status
+		if response.StatusText != nil {
+			details.HTTPStatusText = strings.TrimSpace(*response.StatusText)
+		}
+		if response.Body != nil {
+			details.ProviderMessage = truncateCloudBackupDiagnostic(strings.TrimSpace(*response.Body))
+		}
+		if requestID := cloudBackupRequestID(response); requestID != "" {
+			details.RequestID = requestID
+		}
+		if details.ProviderCode == "" && response.Body != nil {
+			details.ProviderCode = providerCodeFromDiagnosticBody(*response.Body)
+		}
 	}
+	if details.HTTPStatus != nil {
+		details.RequiredCapability = cloudBackupRequiredCapability(details.Operation, *details.HTTPStatus)
+	}
+	return details
 }
 
-func cloudBackupProviderResponseFromHTTPResponse(response *http.Response, secrets []string) *cloudBackupProviderResponse {
-	providerResponse, _ := cloudBackupProviderResponseAndBodyFromHTTPResponse(response, secrets)
-	return providerResponse
+var cloudBackupProviderCodeXMLRe = regexp.MustCompile(`(?is)<(?:[A-Za-z0-9_.-]+:)?Code>\s*([^<\s][^<]{0,255}?)\s*</`)
+var cloudBackupProviderCodeJSONRe = regexp.MustCompile(`(?i)"(?:Code|code)"\s*:\s*"([^"]{1,256})"`)
+var cloudBackupStableCodeRe = regexp.MustCompile(`^CLOUD_BACKUP_[A-Z0-9_]+$`)
+
+func providerCodeFromDiagnosticBody(body string) string {
+	if match := cloudBackupProviderCodeXMLRe.FindStringSubmatch(body); len(match) > 1 {
+		return strings.TrimSpace(match[1])
+	}
+	if match := cloudBackupProviderCodeJSONRe.FindStringSubmatch(body); len(match) > 1 {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
 }
 
-func cloudBackupProviderResponseAndBodyFromHTTPResponse(response *http.Response, secrets []string) (*cloudBackupProviderResponse, string) {
-	providerResponse, body, err := captureUpstreamProviderResponse(response, secrets)
+// target 只保留 host 与 path，避免把完整 URL、query 或签名参数带入错误详情。
+func cloudBackupTargetSummary(target string) string {
+	target = strings.TrimSpace(target)
+	parsed, err := url.Parse(target)
+	if err == nil && parsed.Host != "" {
+		pathValue := parsed.EscapedPath()
+		if pathValue == "" {
+			pathValue = "/"
+		}
+		return sanitizeCloudBackupTarget("host=" + parsed.Host + "; path=" + pathValue)
+	}
+	return sanitizeCloudBackupTarget(target)
+}
+
+func sanitizeCloudBackupTarget(value string) string {
+	value = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, strings.TrimSpace(value))
+	if len(value) > 1024 {
+		return value[:1024] + "…"
+	}
+	return value
+}
+
+func cloudBackupEndpointHost(target string) string {
+	parsed, err := url.Parse(strings.TrimSpace(target))
 	if err != nil {
-		return nil, ""
+		return ""
 	}
-	return providerResponse, body
+	return parsed.Host
 }
 
-func optionalCloudBackupString(value string) *string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
+func cloudBackupRequestID(response *cloudBackupProviderResponse) string {
+	if response == nil || len(response.Headers) == 0 {
+		return ""
 	}
-	return &value
+	for key, value := range response.Headers {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "x-amz-request-id", "x-amz-id-2", "x-request-id", "request-id":
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func cloudBackupRequiredCapability(operation string, status int) string {
+	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return ""
+	}
+	switch strings.ToUpper(strings.TrimSpace(operation)) {
+	case "PUT", "PUTOBJECT", "MKCOL":
+		return "object write permission"
+	case "HEAD", "HEADOBJECT", "GET", "GETOBJECT":
+		return "object read permission"
+	case "LISTOBJECTSV2", "LIST", "PROPFIND", "PROPFIND-DIRECTORY":
+		return "bucket listing permission"
+	case "DELETE", "DELETEOBJECT":
+		return "object delete permission"
+	default:
+		return ""
+	}
 }
 
 func cloudBackupRemoteErrorFrom(err error) *cloudBackupRemoteError {
@@ -120,17 +205,98 @@ func cloudBackupRemoteErrorFrom(err error) *cloudBackupRemoteError {
 	return nil
 }
 
-func cloudBackupProviderAttemptsText(message string, attempts []cloudBackupProviderAttempt) string {
-	lines := []string{message}
-	for _, attempt := range attempts {
-		lines = append(lines, strings.TrimSpace(attempt.Provider+": "+attempt.Code+" "+attempt.Message))
+func cloudBackupErrorWithCleanup(primary error, cleanup []cloudBackupCleanupError) error {
+	if len(cleanup) == 0 {
+		return primary
 	}
-	return strings.Join(lines, "\n")
+	if remoteErr := cloudBackupRemoteErrorFrom(primary); remoteErr != nil {
+		if remoteErr.details == nil {
+			remoteErr.details = &cloudBackupErrorDetails{Operation: "upload", Target: "cloud backup"}
+		}
+		remoteErr.details.Cleanup = append(remoteErr.details.Cleanup, cleanup...)
+		if len(remoteErr.details.Cleanup) > 4 {
+			remoteErr.details.Cleanup = remoteErr.details.Cleanup[:4]
+		}
+		return remoteErr
+	}
+	return &cloudBackupRemoteError{code: "CLOUD_BACKUP_UPLOAD_FAILED", details: &cloudBackupErrorDetails{Operation: "upload", Target: "cloud backup", ClientMessage: truncateCloudBackupDiagnostic(errorMessage(primary)), Cleanup: cleanup}}
 }
 
-func cloudBackupRawResponseText(details *cloudBackupErrorDetails, fallback string) string {
-	if details != nil && details.RawResponseText != nil && strings.TrimSpace(*details.RawResponseText) != "" {
-		return *details.RawResponseText
+func cloudBackupProviderResponseAndBodyFromHTTPResponse(response *http.Response, secrets []string) (*cloudBackupProviderResponse, string) {
+	providerResponse, body, err := captureUpstreamProviderResponse(response, secrets)
+	if err != nil {
+		return nil, ""
+	}
+	return providerResponse, body
+}
+
+func cloudBackupProviderResponseFromBody(response *http.Response, body []byte, truncated bool, secrets []string) *cloudBackupProviderResponse {
+	if response == nil {
+		return nil
+	}
+	copyResponse := *response
+	copyResponse.Body = io.NopCloser(bytes.NewReader(body))
+	providerResponse, _, err := captureUpstreamProviderResponse(&copyResponse, secrets)
+	if err != nil || providerResponse == nil {
+		return nil
+	}
+	providerResponse.BodyTruncated = providerResponse.BodyTruncated || truncated
+	return providerResponse
+}
+
+func truncateCloudBackupDiagnostic(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= upstreamProviderResponseCaptureBodyMaxBytes {
+		return value
+	}
+	return value[:upstreamProviderResponseCaptureBodyMaxBytes]
+}
+
+func errorMessage(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	return err.Error()
+}
+
+func cloudBackupDiagnosticMessage(details *cloudBackupErrorDetails, fallback string) string {
+	if details != nil && details.ClientMessage != "" {
+		return details.ClientMessage
+	}
+	if details != nil && details.ProviderMessage != "" {
+		return details.ProviderMessage
 	}
 	return fallback
+}
+
+func persistedCloudBackupErrorMessage(err error) string {
+	if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil {
+		return remoteErr.code
+	}
+	if candidate := stableCloudBackupErrorCode(errorMessage(err)); candidate != "" {
+		return candidate
+	}
+	return "local_sdk_error"
+}
+
+func stableCloudBackupErrorCode(value string) string {
+	candidate := strings.TrimSpace(value)
+	if cloudBackupStableCodeRe.MatchString(candidate) {
+		return candidate
+	}
+	return ""
+}
+
+func formatCloudBackupCleanupError(operation, target string, err error) cloudBackupCleanupError {
+	code := "CLOUD_BACKUP_CLEANUP_FAILED"
+	message := errorMessage(err)
+	if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil {
+		code = remoteErr.code
+		message = cloudBackupDiagnosticMessage(remoteErr.details, remoteErr.code)
+	}
+	return cloudBackupCleanupError{Operation: operation, Target: target, Code: code, Message: truncateCloudBackupDiagnostic(message)}
+}
+
+func cloudBackupDiagnosticError(code, provider, operation, target, message string) error {
+	return &cloudBackupRemoteError{code: code, details: cloudBackupLocalErrorDetails(provider, operation, target, fmt.Sprint(message))}
 }

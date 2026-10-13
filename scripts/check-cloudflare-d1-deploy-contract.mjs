@@ -5,7 +5,7 @@ function requireSnippet(content, snippet, context) {
   if (!content.includes(snippet)) throw new Error(`${context} must keep D1 deployment snippet: ${snippet}`);
 }
 
-/** workflow 和文档只暴露统一编排入口；状态机顺序由 cloudflare-deploy 行为测试证明。 */
+/** workflow 和文档只暴露统一编排入口；排他 migration 与 v4 派生回填的停写顺序由状态机行为测试证明。 */
 export function checkCloudflareD1DeployContract(repoRoot) {
   const selfHostedPath = ".github/workflows/cloudflare-worker.yml";
   const releasePath = ".github/workflows/release-publish.yml";
@@ -15,7 +15,7 @@ export function checkCloudflareD1DeployContract(repoRoot) {
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
 
   for (const snippet of [
-    "group: cloudflare-worker-${{ github.repository }}\n  cancel-in-progress: false",
+    "group: production-cloudflare-${{ github.repository }}\n  cancel-in-progress: false",
     "timeout-minutes: 60",
     "CI_WRANGLER_MAINTENANCE_CONFIG: wrangler.maintenance.generated.jsonc",
   ]) requireSnippet(selfHosted, snippet, selfHostedPath);
@@ -42,6 +42,7 @@ export function checkCloudflareD1DeployContract(repoRoot) {
     "restoreQueueConsumers(options.configPath)",
     "SELECT name, sql FROM sqlite_master",
     "assertD1TriggerDefinitions",
+    "readPendingDerivedBackfill",
   ]) {
     const source = snippet.startsWith("retryAll")
       ? readFileSync(join(repoRoot, "apps/worker/src/index.ts"), "utf8")

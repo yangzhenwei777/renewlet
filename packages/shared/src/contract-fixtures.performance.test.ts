@@ -22,7 +22,9 @@ describe.each(subscriptionPerformanceFixture.scenarios)("subscription performanc
     expect(statusCounts).toEqual(expected.statusCounts);
     expect(tagRows).toBe(expected.tagRows);
     expect(final.filter((record) => record.autoRenew)).toHaveLength(expected.autoRenew);
-    expect(final.filter((record) => record.repeatReminderEnabled)).toHaveLength(expected.repeatReminder);
+    // repeatReminder 是调度候选资格；已取消订阅即使保留开关也不能进入 repeat schedule。
+    expect(final.filter((record) => record.repeatReminderEnabled && record.status !== "cancelled"))
+      .toHaveLength(expected.repeatReminder);
     expect(combinedFilterIndices).toEqual(expected.combinedFilterIndices);
   });
 });

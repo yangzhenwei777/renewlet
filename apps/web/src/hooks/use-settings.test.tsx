@@ -10,6 +10,7 @@ import {
   type AppSettings,
 } from "@/types/subscription";
 import { SETTINGS_QUERY_KEY } from "./settings-query-key";
+import { notificationQueryKeys } from "./notification-query-cache";
 import { normalizeSettings, useSettings, useUpdateSettings } from "./use-settings";
 import { EMPTY_SETTINGS_SECRET_STATUS, type SettingsReadModel } from "@/services/settings-service";
 
@@ -85,6 +86,7 @@ describe("useSettings query contract", () => {
     const queryClient = createQueryClient();
     queryClient.setQueryData(SETTINGS_QUERY_KEY, settingsEnvelope({ defaultCurrency: "CNY" }));
     mocks.settingsUpdate.mockResolvedValue(settingsEnvelope({ defaultCurrency: "USD" }));
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
     const { result } = renderHook(() => useUpdateSettings(), { wrapper: createWrapper(queryClient) });
 
@@ -98,6 +100,7 @@ describe("useSettings query contract", () => {
       {},
     );
     expect(queryClient.getQueryData<SettingsReadModel>(SETTINGS_QUERY_KEY)?.settings.defaultCurrency).toBe("USD");
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
   });
 
   it("resets subscription collections when the account timezone changes", async () => {

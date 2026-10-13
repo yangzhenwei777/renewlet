@@ -19,9 +19,6 @@ var serverI18nFS embed.FS
 
 var (
 	serverI18nCatalogs = mustLoadServerI18nCatalogs()
-	serverI18nLocales  = append([]appLocale(nil), supportedAppLocales...)
-	serverI18nTags     = serverI18nLanguageTags(serverI18nLocales)
-	serverI18nMatcher  = language.NewMatcher(serverI18nTags)
 	acceptLanguageQRe  = regexp.MustCompile(`^(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)$`)
 )
 
@@ -44,15 +41,8 @@ func mustLoadServerI18nCatalogs() map[appLocale]map[string]string {
 	return catalogs
 }
 
-func serverI18nLanguageTags(locales []appLocale) []language.Tag {
-	tags := make([]language.Tag, 0, len(locales))
-	for _, locale := range locales {
-		tags = append(tags, language.MustParse(string(locale)))
-	}
-	return tags
-}
-
-// matcher 只接受合法语言标签并按受支持语言收敛；这里的结果必须与 Worker matchServerLocale 保持同构。
+// matchAppLocale 只允许完整标签或基础语言命中，避免 Go 的语言相似度 matcher 把白俄罗斯语等推断成俄语；
+// 该边界与 Worker matchServerLocale 共用同一组夹具，跨运行面不能依赖各自运行库的相似语言启发式。
 func matchAppLocale(value string) (appLocale, bool) {
 	value = strings.TrimSpace(strings.ReplaceAll(value, "_", "-"))
 	if value == "" {
@@ -62,11 +52,26 @@ func matchAppLocale(value string) (appLocale, bool) {
 	if err != nil {
 		return defaultAppLocale, false
 	}
-	_, index, confidence := serverI18nMatcher.Match(tag)
-	if confidence == language.No {
-		return defaultAppLocale, false
+	normalized := strings.ToLower(tag.String())
+	for _, locale := range supportedAppLocales {
+		if normalized == strings.ToLower(string(locale)) {
+			return locale, true
+		}
 	}
-	return serverI18nLocales[index], true
+	baseLanguage := normalized
+	if separator := strings.IndexByte(baseLanguage, '-'); separator >= 0 {
+		baseLanguage = baseLanguage[:separator]
+	}
+	for _, locale := range supportedAppLocales {
+		localeTag := strings.ToLower(string(locale))
+		if separator := strings.IndexByte(localeTag, '-'); separator >= 0 {
+			localeTag = localeTag[:separator]
+		}
+		if baseLanguage == localeTag {
+			return locale, true
+		}
+	}
+	return defaultAppLocale, false
 }
 
 func normalizeAppLocale(value string) appLocale {

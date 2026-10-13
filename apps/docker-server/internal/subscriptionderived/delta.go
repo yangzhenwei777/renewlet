@@ -66,7 +66,7 @@ func contributionForUser(snapshot *Snapshot, userID string) (Delta, error) {
 	if snapshot.AutoRenew {
 		contribution.AutoRenew = 1
 	}
-	if snapshot.RepeatReminderEnabled {
+	if snapshot.RepeatReminderEnabled && snapshot.Status != "cancelled" {
 		contribution.RepeatReminder = 1
 	}
 	return contribution, nil

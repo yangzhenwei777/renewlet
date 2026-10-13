@@ -191,11 +191,15 @@ export async function expectEmptyTagCursorStaysInline(page: Page, dialog: Locato
     const containerRect = container.getBoundingClientRect();
     const chipRect = lastChip.getBoundingClientRect();
     const sizerRect = sizer.getBoundingClientRect();
-    const columnGap = Number.parseFloat(window.getComputedStyle(container).columnGap || "0") || 0;
-    const requiredInlineSpace = sizerRect.width + columnGap + 4;
+    const style = window.getComputedStyle(container);
+    const columnGap = Number.parseFloat(style.columnGap) || 0;
+    // flex 子项只能占内容区；padding 和 border 看起来留白，但不能容纳下一枚 chip 或光标。
+    const contentRight = containerRect.right - Number.parseFloat(style.paddingRight) - Number.parseFloat(style.borderRightWidth);
+    const freeSpace = contentRight - chipRect.right;
+    const requiredInlineSpace = sizerRect.width + columnGap;
     return {
-      freeSpaceAfterLastChip: Math.round(containerRect.right - chipRect.right),
-      cursorFitsCurrentRow: containerRect.right - chipRect.right >= requiredInlineSpace,
+      freeSpaceAfterLastChip: Math.round(freeSpace),
+      cursorFitsCurrentRow: freeSpace >= requiredInlineSpace,
       gapWidth: Math.round(columnGap),
       inputIsBelowLastChip: sizerRect.top - chipRect.top > 12,
       sizerWidth: Math.round(sizerRect.width),

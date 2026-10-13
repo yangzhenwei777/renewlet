@@ -1,0 +1,23 @@
+[
+  { "name": "empty header", "header": "", "expected": "en-US" },
+  { "name": "highest quality wins", "header": "en-US;q=0.7, zh-CN;q=0.9", "expected": "zh-CN" },
+  { "name": "russian base language", "header": "ru, en;q=0.8", "expected": "ru-RU" },
+  { "name": "russian regional variant", "header": "ru-BY", "expected": "ru-RU" },
+  { "name": "underscore separator is normalized", "header": "ru_RU", "expected": "ru-RU" },
+  { "name": "chinese script variant", "header": "zh-Hant", "expected": "zh-CN" },
+  { "name": "english regional variant", "header": "en-GB", "expected": "en-US" },
+  { "name": "belarusian does not infer russian", "header": "be-BY", "expected": "en-US" },
+  { "name": "kazakh does not infer russian", "header": "kk-KZ", "expected": "en-US" },
+  { "name": "tajik does not infer russian", "header": "tg-TJ", "expected": "en-US" },
+  { "name": "ukrainian does not infer russian", "header": "uk-UA", "expected": "en-US" },
+  { "name": "unsupported language falls through", "header": "fr-FR, en;q=0.8", "expected": "en-US" },
+  { "name": "zero quality is ignored", "header": "en-US;q=0, zh-CN;q=0.8", "expected": "zh-CN" },
+  { "name": "malformed quality is ignored", "header": "zh-CN;q=0.8junk, en-US;q=0.7", "expected": "en-US" },
+  { "name": "out of range quality is ignored", "header": "zh-CN;q=1.1, en-US;q=0.4", "expected": "en-US" },
+  { "name": "non finite quality is ignored", "header": "zh-CN;q=NaN, en-US;q=0.4", "expected": "en-US" },
+  { "name": "non decimal quality is ignored", "header": "zh-CN;q=0x1, en-US;q=0.4", "expected": "en-US" },
+  { "name": "over precise quality is ignored", "header": "zh-CN;q=0.1234, en-US;q=0.4", "expected": "en-US" },
+  { "name": "invalid language tag is ignored", "header": "zh-$$$;q=0.9, en-US;q=0.8", "expected": "en-US" },
+  { "name": "wildcard selects default locale", "header": "*;q=0.9, zh-CN;q=0.8", "expected": "en-US" },
+  { "name": "original order breaks equal quality", "header": "zh-CN;q=0.5, en-US;q=0.5", "expected": "zh-CN" }
+]

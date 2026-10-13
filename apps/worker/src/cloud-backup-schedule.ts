@@ -1,10 +1,11 @@
+import { scheduleInstantUtc } from "@renewlet/shared/schedule-time";
 import {
   type CloudBackupPolicy,
   type CloudBackupScheduleWeekday,
 } from "@renewlet/shared/schemas/cloud-backup";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
-import { addDays, dateOnlyInZone, localTimeInZone, safeTimeZone } from "./time";
+import { addDays, dateOnlyInZone, safeTimeZone } from "./time";
 
 type CloudBackupScheduleTarget = {
   policy: CloudBackupPolicy;
@@ -46,10 +47,10 @@ function latestCloudBackupScheduledInstant(now: Date, timezone: string, policy: 
   if (policy.scheduleFrequency === "weekly") {
     scheduledDate = addDays(localDate, -weekdayDistanceBack(weekdayNameInZone(now, safeTimezone), policy.scheduleWeekday));
   }
-  let scheduled = new Date(zonedWallTimeToUtc(scheduledDate, policy.scheduleTime, safeTimezone));
+  let scheduled = new Date(scheduleInstantUtc(scheduledDate, policy.scheduleTime, safeTimezone));
   if (scheduled.getTime() > now.getTime()) {
     scheduledDate = addDays(scheduledDate, policy.scheduleFrequency === "weekly" ? -7 : -1);
-    scheduled = new Date(zonedWallTimeToUtc(scheduledDate, policy.scheduleTime, safeTimezone));
+    scheduled = new Date(scheduleInstantUtc(scheduledDate, policy.scheduleTime, safeTimezone));
   }
   return Number.isNaN(scheduled.getTime()) ? null : scheduled;
 }
@@ -61,14 +62,14 @@ function nextCloudBackupScheduledInstant(now: Date, timezone: string, policy: Cl
     for (let offset = 0; offset <= 7; offset += 1) {
       const scheduledDate = addDays(localDate, offset);
       if (weekdayNameForDateOnly(scheduledDate) !== policy.scheduleWeekday) continue;
-      const scheduled = new Date(zonedWallTimeToUtc(scheduledDate, policy.scheduleTime, safeTimezone));
+      const scheduled = new Date(scheduleInstantUtc(scheduledDate, policy.scheduleTime, safeTimezone));
       if (!Number.isNaN(scheduled.getTime()) && scheduled.getTime() > now.getTime()) return scheduled;
     }
     return null;
   }
-  const todayScheduled = new Date(zonedWallTimeToUtc(localDate, policy.scheduleTime, safeTimezone));
+  const todayScheduled = new Date(scheduleInstantUtc(localDate, policy.scheduleTime, safeTimezone));
   if (!Number.isNaN(todayScheduled.getTime()) && todayScheduled.getTime() > now.getTime()) return todayScheduled;
-  const tomorrow = new Date(zonedWallTimeToUtc(addDays(localDate, 1), policy.scheduleTime, safeTimezone));
+  const tomorrow = new Date(scheduleInstantUtc(addDays(localDate, 1), policy.scheduleTime, safeTimezone));
   return Number.isNaN(tomorrow.getTime()) ? null : tomorrow;
 }
 
@@ -94,16 +95,4 @@ function cloudBackupWeekdayFromName(name: string): CloudBackupScheduleWeekday {
 function weekdayDistanceBack(current: CloudBackupScheduleWeekday, target: CloudBackupScheduleWeekday): number {
   const order: CloudBackupScheduleWeekday[] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   return (order.indexOf(current) - order.indexOf(target) + 7) % 7;
-}
-
-function zonedWallTimeToUtc(date: string, time: string, timezone: string): string {
-  const [hour = "0", minute = "0"] = time.split(":");
-  const guess = new Date(`${date}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00.000Z`);
-  for (let offset = -26; offset <= 26; offset += 1) {
-    const utc = new Date(guess.getTime() + offset * 60 * 60 * 1000).toISOString();
-    const shownDate = dateOnlyInZone(new Date(utc), timezone);
-    const shownTime = localTimeInZone(new Date(utc), timezone);
-    if (shownDate === date && shownTime === time) return utc;
-  }
-  return guess.toISOString();
 }

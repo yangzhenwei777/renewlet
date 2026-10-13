@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { S3Client } from "@aws-sdk/client-s3";
+import { CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS } from "@renewlet/shared/schemas/cloud-backup";
 import { CloudBackupRemoteError, S3CloudBackupClient, WebDAVCloudBackupClient, sha256Hex } from "./cloud-backup-remote";
+
+type CloudBackupRemoteErrorMatch = Omit<Partial<CloudBackupRemoteError>, "details"> & {
+  details?: Partial<NonNullable<CloudBackupRemoteError["details"]>>;
+};
 
 // Worker 远端测试锁定 S3 签名输入和 raw response 契约，避免靠供应商域名表逐个打补丁。
 function fetchCallFromArgs(input: RequestInfo | URL, init?: RequestInit) {
@@ -9,20 +15,22 @@ function fetchCallFromArgs(input: RequestInfo | URL, init?: RequestInit) {
     href,
     url: new URL(href),
     method: init?.method ?? request?.method ?? "GET",
+    cache: init?.cache ?? request?.cache,
     headers: new Headers(init?.headers ?? request?.headers),
   };
 }
 
-function s3Client(endpoint: string, bucket: string): S3CloudBackupClient {
-  return s3ClientWithRegion(endpoint, bucket, "ap-shanghai");
+function s3Client(endpoint: string, bucket: string, addressingStyle: "auto" | "pathStyle" | "virtualHost" = "auto"): S3CloudBackupClient {
+  return s3ClientWithRegion(endpoint, bucket, "ap-shanghai", "snapshots", addressingStyle);
 }
 
-function s3ClientWithRegion(endpoint: string, bucket: string, region: string): S3CloudBackupClient {
+function s3ClientWithRegion(endpoint: string, bucket: string, region: string, prefix = "snapshots", addressingStyle: "auto" | "pathStyle" | "virtualHost" = "auto"): S3CloudBackupClient {
   return new S3CloudBackupClient({
     endpoint,
     region,
     bucket,
-    prefix: "snapshots",
+    prefix,
+    addressingStyle,
     accessKeyId: "access-key",
   }, "secret-key");
 }
@@ -30,7 +38,8 @@ function s3ClientWithRegion(endpoint: string, bucket: string, region: string): S
 function stubS3ListSuccess(): string[] {
   const calls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-    const { href, method } = fetchCallFromArgs(url, init);
+    const { href, method, cache } = fetchCallFromArgs(url, init);
+    expect(cache).toBe("no-store");
     calls.push(`${method} ${href}`);
     return new Response(`<?xml version="1.0"?><ListBucketResult></ListBucketResult>`, { status: 200 });
   }));
@@ -39,10 +48,11 @@ function stubS3ListSuccess(): string[] {
 
 describe("S3CloudBackupClient endpoint addressing", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it("parses ListObjectsV2 XML without DOMParser in the Worker runtime path", async () => {
+  it("parses ListObjectsV2 XML without DOMParser in the Node SDK entry", async () => {
     vi.stubGlobal("DOMParser", undefined);
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -51,7 +61,7 @@ describe("S3CloudBackupClient endpoint addressing", () => {
       return new Response([
         `<?xml version="1.0"?>`,
         `<ListBucketResult>`,
-        `<Contents><Key>snapshots%2Frenewlet-export-v1-20260609T000000Z-abcd1234.manifest.json</Key></Contents>`,
+        `<Contents><Key>snapshots%2Frenewlet-export-v1-20260609T000000Z-abcd1234.zip</Key></Contents>`,
         `</ListBucketResult>`,
       ].join(""), { status: 200 });
     }));
@@ -71,10 +81,19 @@ describe("S3CloudBackupClient endpoint addressing", () => {
     expect(calls.every((call) => !call.includes("https://storage.example.com/renewlet"))).toBe(true);
   });
 
-  it("uses path-style addressing only for local network shaped endpoints", async () => {
+  it("omits ListObjectsV2 Prefix for an explicit bucket-root configuration", async () => {
     const calls = stubS3ListSuccess();
 
-    await s3Client("https://storage.example.com:9000", "renewlet").list();
+    await s3ClientWithRegion("https://storage.example.com", "renewlet", "auto", "").list();
+
+    expect(calls[0]).toContain("https://renewlet.storage.example.com/");
+    expect(calls[0]).not.toContain("prefix=");
+  });
+
+  it("uses path-style addressing only when explicitly selected", async () => {
+    const calls = stubS3ListSuccess();
+
+    await s3Client("https://storage.example.com:9000", "renewlet", "pathStyle").list();
 
     expect(calls.some((call) => call.includes("https://storage.example.com:9000/renewlet") && call.includes("list-type=2"))).toBe(true);
     expect(calls.every((call) => !call.includes("https://renewlet.storage.example.com:9000"))).toBe(true);
@@ -83,8 +102,8 @@ describe("S3CloudBackupClient endpoint addressing", () => {
   it("uses the explicit signing region in SigV4 credential scope", async () => {
     const calls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      const { href, method, url: parsedUrl } = fetchCallFromArgs(url, init);
-      expect(parsedUrl.searchParams.get("X-Amz-Credential")).toContain("/auto/s3/aws4_request");
+      const { href, method, headers } = fetchCallFromArgs(url, init);
+      expect(headers.get("authorization")).toContain("/auto/s3/aws4_request");
       calls.push(`${method} ${href}`);
       return new Response(`<?xml version="1.0"?><ListBucketResult></ListBucketResult>`, { status: 200 });
     }));
@@ -94,11 +113,11 @@ describe("S3CloudBackupClient endpoint addressing", () => {
     expect(calls[0]).toContain("https://renewlet.storage.example.com/");
   });
 
-  it("returns upstream XML for signature failures without leaking signed query values", async () => {
-    const body = `<?xml version='1.0' encoding='utf-8'?><Error><Code>SignatureDoesNotMatch</Code><Message>bad signature</Message></Error>`;
+  it.each(["SignatureDoesNotMatch", "Unknown"])("preserves an actual %s provider response without filtering error names", async (providerCode) => {
+    const body = `<?xml version='1.0' encoding='utf-8'?><Error><Code>${providerCode}</Code><Message>provider failure</Message></Error>`;
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      const { url: parsedUrl } = fetchCallFromArgs(url, init);
-      expect(parsedUrl.searchParams.get("X-Amz-Signature")).toBeTruthy();
+      const { headers } = fetchCallFromArgs(url, init);
+      expect(headers.get("authorization")).toContain("AWS4-HMAC-SHA256");
       return new Response(body, {
         status: 403,
         statusText: "Forbidden",
@@ -117,9 +136,14 @@ describe("S3CloudBackupClient endpoint addressing", () => {
     expect(error).toMatchObject({
       code: "CLOUD_BACKUP_S3_LIST_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("<Code>SignatureDoesNotMatch</Code>"),
+        providerCode,
+        providerMessage: body,
+        httpStatus: 403,
+        httpStatusText: "Forbidden",
+        requiredCapability: "bucket listing permission",
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(error?.details?.clientMessage).toBeUndefined();
     expect(JSON.stringify(error?.details)).not.toContain("X-Amz-Signature");
   });
 
@@ -141,9 +165,63 @@ describe("S3CloudBackupClient endpoint addressing", () => {
     expect(error).toMatchObject({
       code: "CLOUD_BACKUP_S3_LIST_FAILED",
       details: {
-        rawResponseText: expect.any(String),
+        providerMessage: expect.any(String),
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(error?.details?.operation).toBe("ListObjectsV2");
+    expect(error?.details?.clientMessage).toContain("XML parse error");
+    expect(error?.details?.providerCode).toBeUndefined();
+  });
+
+  it.each([200, 403])("bounds an oversized S3 response with HTTP %s and cancels its stream", async (status) => {
+    const cancel = vi.fn();
+    const limit = status === 200 ? 1024 * 1024 : CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS;
+    const body = `<Error><Code>AccessDenied</Code><Message>secret-key ${"x".repeat(limit)}</Message></Error>`;
+    const fetch = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode(body)); },
+      cancel,
+    }), { status }));
+    vi.stubGlobal("fetch", fetch);
+
+    const error: unknown = await s3Client("https://storage.example.com", "renewlet").list().catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CloudBackupRemoteError);
+    if (!(error instanceof CloudBackupRemoteError)) throw new Error("Expected structured remote error");
+    expect(error.code).toBe("CLOUD_BACKUP_S3_LIST_FAILED");
+    expect(error.details?.httpStatus).toBe(status);
+    expect(error.details?.providerMessage?.length).toBeLessThanOrEqual(CLOUD_BACKUP_DIAGNOSTIC_MAX_CHARS);
+    expect(JSON.stringify(error.details)).not.toContain("secret-key");
+    if (status === 200) expect(error.details?.clientMessage).toContain("1048576-byte limit");
+    else expect(error.details?.providerCode).toBe("AccessDenied");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a local SDK exception separate from a successful provider response", async () => {
+    const body = "<ListBucketResult><Name>renewlet</Name></ListBucketResult>";
+    vi.spyOn(S3Client.prototype, "send").mockRejectedValueOnce(Object.assign(
+      new ReferenceError("DOMParser is not defined; access-key secret-key https://storage.example.com/?X-Amz-Signature=hidden"),
+      {
+        $metadata: { httpStatusCode: 200, requestId: "request-id" },
+        $response: { statusCode: 200, body },
+      },
+    ));
+
+    const error = await s3Client("https://storage.example.com", "renewlet").list().catch((cause: unknown) => cause);
+    expect(error).toMatchObject({
+      code: "CLOUD_BACKUP_S3_LIST_FAILED",
+      details: {
+        httpStatus: 200,
+        requestId: "request-id",
+        providerMessage: body,
+        clientMessage: expect.stringContaining("ReferenceError: DOMParser is not defined"),
+      },
+    });
+
+    expect(error).toBeInstanceOf(CloudBackupRemoteError);
+    if (!(error instanceof CloudBackupRemoteError)) throw new Error("Expected structured remote error");
+    expect(error.details?.providerCode).toBeUndefined();
+    expect(JSON.stringify(error.details)).not.toMatch(/access-key|secret-key|hidden/);
   });
 
   it("returns local S3 failures without leaking credentials or signatures", async () => {
@@ -160,13 +238,13 @@ describe("S3CloudBackupClient endpoint addressing", () => {
     }
 
     expect(error).toMatchObject({
-      code: "CLOUD_BACKUP_S3_LOCAL_FAILED",
+      code: "CLOUD_BACKUP_S3_LIST_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("S3 ListObjectsV2 GET request to https://cloudstorage.iam.storage.dev/"),
+        target: expect.stringContaining("host=iam.storage.dev; bucket=cloudstorage"),
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
     const serialized = JSON.stringify(error?.details);
-    expect(serialized).toContain("X-Amz-Signature=%5Bredacted%5D");
+    expect(serialized).not.toContain("X-Amz-Signature");
     expect(serialized).not.toContain("access-key");
     expect(serialized).not.toContain("secret-key");
   });
@@ -180,16 +258,105 @@ describe("S3CloudBackupClient endpoint addressing", () => {
       return new Response([
         `<?xml version="1.0"?>`,
         `<ListBucketResult>`,
-        `<Contents><Key>${token ? "snapshots%2Fsecond.manifest.json" : "snapshots%2Ffirst.manifest.json"}</Key></Contents>`,
+        `<Contents><Key>${token ? "snapshots%2Fsecond.zip" : "snapshots%2Ffirst.zip"}</Key></Contents>`,
         `<NextContinuationToken>same-token</NextContinuationToken>`,
         `</ListBucketResult>`,
       ].join(""), { status: 200 });
     }));
 
-    await s3Client("https://storage.example.com", "renewlet").list();
+    await s3ClientWithRegion("https://storage.example.com", "renewlet", "auto", "").list();
 
     expect(calls).toHaveLength(2);
+    expect(calls[0]).not.toContain("prefix=");
+    expect(calls[1]).not.toContain("prefix=");
     expect(calls[1]).toContain("continuation-token=same-token");
+  });
+
+  it("preserves a bodyless HeadObject failure and cleanup without inventing provider diagnostics", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const { method, cache } = fetchCallFromArgs(url, init);
+      expect(cache).toBe("no-store");
+      calls.push(method);
+      if (method === "HEAD") return new Response(null, { status: 403, statusText: "Forbidden", headers: { "x-amz-request-id": "head-request" } });
+      if (method === "DELETE") return new Response("", { status: 403, statusText: "Forbidden" });
+      return new Response("", { status: 200 });
+    }));
+
+    const content = new TextEncoder().encode("renewlet");
+    const manifest = {
+      kind: "renewlet-cloud-backup-snapshot" as const,
+      schemaVersion: 1 as const,
+      id: "renewlet-export-v1-20260609T000000Z-head",
+      filename: "renewlet-export-v1-20260609T000000Z-head.zip",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      sizeBytes: content.length,
+      sha256: await sha256Hex(content),
+      exportKind: "renewlet-export" as const,
+      exportSchemaVersion: 1 as const,
+    };
+    let error: CloudBackupRemoteError | null = null;
+    try {
+      await s3Client("https://storage.example.com", "renewlet").upload(manifest.filename, content, manifest);
+    } catch (caught) {
+      if (caught instanceof CloudBackupRemoteError) error = caught;
+      else throw caught;
+    }
+    expect(error).toMatchObject({
+      code: "CLOUD_BACKUP_S3_HEAD_FAILED",
+      details: {
+        requiredCapability: "object read permission",
+        httpStatus: 403,
+        httpStatusText: "Forbidden",
+        operation: "HeadObject",
+        requestId: "head-request",
+        cleanup: [expect.objectContaining({ operation: "DeleteObject", code: "CLOUD_BACKUP_S3_DELETE_FAILED" })],
+      },
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(error?.details?.providerCode).toBeUndefined();
+    expect(error?.details?.providerMessage).toBeUndefined();
+    expect(error?.details?.clientMessage).toBeUndefined();
+    expect(calls).toEqual(["PUT", "HEAD", "DELETE"]);
+  });
+
+  it("removes both objects when manifest upload fails", async () => {
+    const calls: string[] = [];
+    let putCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const { method } = fetchCallFromArgs(url, init);
+      calls.push(method);
+      if (method === "PUT" && ++putCount === 2) return new Response("", { status: 403, statusText: "Forbidden" });
+      if (method === "HEAD") return new Response("", { status: 200, headers: { "content-length": "8" } });
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      return new Response("", { status: 200 });
+    }));
+
+    const content = new TextEncoder().encode("renewlet");
+    const manifest = {
+      kind: "renewlet-cloud-backup-snapshot" as const,
+      schemaVersion: 1 as const,
+      id: "renewlet-export-v1-20260609T000000Z-manifest",
+      filename: "renewlet-export-v1-20260609T000000Z-manifest.zip",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      sizeBytes: content.length,
+      sha256: await sha256Hex(content),
+      exportKind: "renewlet-export" as const,
+      exportSchemaVersion: 1 as const,
+    };
+    let error: CloudBackupRemoteError | null = null;
+    try {
+      await s3Client("https://storage.example.com", "renewlet").upload(manifest.filename, content, manifest);
+    } catch (caught) {
+      if (caught instanceof CloudBackupRemoteError) error = caught;
+      else throw caught;
+    }
+    expect(error).toMatchObject({
+      code: "CLOUD_BACKUP_S3_PUT_FAILED",
+      details: {
+        target: expect.stringContaining("snapshots/renewlet-export-v1-20260609T000000Z-manifest.manifest.json"),
+      },
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(calls).toEqual(["PUT", "HEAD", "PUT", "DELETE", "DELETE"]);
   });
 });
 
@@ -218,7 +385,15 @@ function installFakeWebDAVServer(): string[] {
       return new Response("", { status: 201 });
     }
     if (request.method === "PROPFIND") {
-      if (!directories.has(target)) return new Response("", { status: 404, statusText: "Not Found" });
+      if (!directories.has(target)) {
+        const body = files.get(target);
+        if (!body) return new Response("", { status: 404, statusText: "Not Found" });
+        return new Response(webDAVFileMultiStatus(target, body.length), {
+          status: 207,
+          statusText: "Multi-Status",
+          headers: { "content-type": "application/xml" },
+        });
+      }
       return new Response(webDAVMultiStatus(target, files), {
         status: 207,
         statusText: "Multi-Status",
@@ -226,7 +401,8 @@ function installFakeWebDAVServer(): string[] {
       });
     }
     if (request.method === "PUT") {
-      files.set(target, new Uint8Array(await request.arrayBuffer()));
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      files.set(target, bytes);
       return new Response("", { status: 201 });
     }
     if (request.method === "GET") {
@@ -235,7 +411,7 @@ function installFakeWebDAVServer(): string[] {
     }
     if (request.method === "DELETE") {
       const existed = files.delete(target);
-      return new Response("", { status: existed ? 204 : 404 });
+      return new Response(existed ? null : "", { status: existed ? 204 : 404 });
     }
     return new Response("", { status: 405 });
   });
@@ -292,9 +468,11 @@ describe("WebDAVCloudBackupClient protocol adapter", () => {
     expect(error).toMatchObject({
       code: "CLOUD_BACKUP_WEBDAV_MKCOL_FAILED",
       details: {
-        rawResponseText: expect.any(String),
+        httpStatus: 401,
+        httpStatusText: "Unauthorized",
+        requiredCapability: "object write permission",
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
     expect(JSON.stringify(error?.details)).not.toContain("webdav-secret");
   });
 
@@ -314,7 +492,9 @@ describe("WebDAVCloudBackupClient protocol adapter", () => {
       else throw caught;
     }
 
-    expect(remoteError?.details?.rawResponseText).toContain("denied [redacted]");
+    expect(remoteError?.details?.providerMessage).toContain("denied [redacted]");
+    expect(remoteError?.details?.httpStatus).toBe(403);
+    expect(remoteError?.details?.requiredCapability).toBe("object write permission");
     patchWebDAVFetch(() => {
       throw new TypeError("Network connection lost.");
     });
@@ -329,10 +509,86 @@ describe("WebDAVCloudBackupClient protocol adapter", () => {
     expect(localError).toMatchObject({
       code: "CLOUD_BACKUP_WEBDAV_MKCOL_FAILED",
       details: {
-        rawResponseText: expect.stringContaining("WebDAV PROPFIND request to https://dav.example.com/remote.php/dav/files/alice/renewlet"),
+        target: expect.stringContaining("host=dav.example.com"),
       },
-    } satisfies Partial<CloudBackupRemoteError>);
+    } satisfies CloudBackupRemoteErrorMatch);
     expect(JSON.stringify(localError?.details)).not.toContain("webdav-secret");
+  });
+
+  it("cleans the ZIP and manifest after a WebDAV manifest upload failure", async () => {
+    const calls: string[] = [];
+    let putCount = 0;
+    const files = new Map<string, Uint8Array>();
+    patchWebDAVFetch(async (request) => {
+      const target = cleanWebDAVPath(new URL(request.url).pathname);
+      calls.push(`${request.method} ${target}`);
+      if (request.method === "MKCOL") return new Response("", { status: 201 });
+      if (request.method === "PUT" && ++putCount === 2) return new Response("", { status: 403, statusText: "Forbidden" });
+      if (request.method === "PUT") {
+        files.set(target, new Uint8Array(await request.arrayBuffer()));
+        return new Response("", { status: 201 });
+      }
+      if (request.method === "PROPFIND" && files.has(target)) return new Response(webDAVFileMultiStatus(target, files.get(target)?.byteLength ?? 0), { status: 207, headers: { "content-type": "application/xml" } });
+      if (request.method === "DELETE") return new Response(null, { status: 204 });
+      return new Response("", { status: 404, statusText: "Not Found" });
+    });
+
+    const content = new TextEncoder().encode("renewlet");
+    const manifest = {
+      kind: "renewlet-cloud-backup-snapshot" as const,
+      schemaVersion: 1 as const,
+      id: "renewlet-export-v1-20260609T000000Z-webdav-failure",
+      filename: "renewlet-export-v1-20260609T000000Z-webdav-failure.zip",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      sizeBytes: content.length,
+      sha256: await sha256Hex(content),
+      exportKind: "renewlet-export" as const,
+      exportSchemaVersion: 1 as const,
+    };
+
+    await expect(webDAVClient().upload(manifest.filename, content, manifest)).rejects.toMatchObject({
+      code: "CLOUD_BACKUP_WEBDAV_PUT_FAILED",
+      details: {
+        httpStatus: 403,
+        httpStatusText: "Forbidden",
+      },
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(calls.filter((call) => call.startsWith("PUT "))).toHaveLength(2);
+    expect(calls.filter((call) => call.startsWith("DELETE "))).toHaveLength(2);
+  });
+
+  it("cleans the ZIP when WebDAV stat validation is forbidden", async () => {
+    const calls: string[] = [];
+    let putStarted = false;
+    patchWebDAVFetch(async (request) => {
+      calls.push(request.method);
+      if (request.method === "MKCOL" || request.method === "PUT") {
+        putStarted = request.method === "PUT";
+        return new Response("", { status: 201 });
+      }
+      if (request.method === "PROPFIND") return new Response("", { status: putStarted ? 403 : 404, statusText: putStarted ? "Forbidden" : "Not Found" });
+      if (request.method === "DELETE") return new Response(null, { status: 204 });
+      return new Response("", { status: 404, statusText: "Not Found" });
+    });
+
+    const content = new TextEncoder().encode("renewlet");
+    const manifest = {
+      kind: "renewlet-cloud-backup-snapshot" as const,
+      schemaVersion: 1 as const,
+      id: "renewlet-export-v1-20260609T000000Z-webdav-stat",
+      filename: "renewlet-export-v1-20260609T000000Z-webdav-stat.zip",
+      createdAt: "2026-06-09T00:00:00.000Z",
+      sizeBytes: content.length,
+      sha256: await sha256Hex(content),
+      exportKind: "renewlet-export" as const,
+      exportSchemaVersion: 1 as const,
+    };
+
+    await expect(webDAVClient().upload(manifest.filename, content, manifest)).rejects.toMatchObject({
+      code: "CLOUD_BACKUP_WEBDAV_PROPFIND_FAILED",
+      details: { requiredCapability: "bucket listing permission", httpStatus: 403 },
+    } satisfies CloudBackupRemoteErrorMatch);
+    expect(calls).toEqual(["PROPFIND", "MKCOL", "PUT", "PROPFIND", "DELETE"]);
   });
 
   it("switches from Basic to Digest after an explicit WebDAV challenge", async () => {
@@ -357,7 +613,7 @@ describe("WebDAVCloudBackupClient protocol adapter", () => {
     await expect(webDAVClient().list()).resolves.toEqual([]);
 
     expect(authorizations[0]).toMatch(/^Basic /);
-    expect(authorizations.slice(1).every((value) => value.startsWith("Digest "))).toBe(true);
+    expect(authorizations.some((value) => value.startsWith("Digest "))).toBe(true);
     expect(authorizations.join(" ")).not.toContain("webdav-secret");
   });
 });
@@ -376,6 +632,10 @@ function webDAVMultiStatus(directory: string, files: Map<string, Uint8Array>): s
     }
   }
   return `<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">${responses.join("")}</d:multistatus>`;
+}
+
+function webDAVFileMultiStatus(filename: string, size: number): string {
+  return `<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">${webDAVResponse(filename, false, size)}</d:multistatus>`;
 }
 
 function webDAVResponse(href: string, directory: boolean, size: number): string {

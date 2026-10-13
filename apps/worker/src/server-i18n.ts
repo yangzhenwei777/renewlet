@@ -67,7 +67,7 @@ export function requestLocale(request: Request): AppLocale {
       ? value as AppLocale
       : DEFAULT_SERVER_I18N_LOCALE;
   }
-  // Accept-Language 只是无显式设置时的兜底；q 权重、非法项和通配符规则必须与 Go matcher 同构。
+  // Accept-Language 只是无显式设置时的兜底；只允许完整标签/基础语言匹配，不能让 Go 或 JS 运行库自行推断相近语言。
   const accepted = (request.headers.get("accept-language") ?? "")
     .split(",")
     .map((part, index) => {

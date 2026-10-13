@@ -42,7 +42,7 @@ function envFixture(row: SubscriptionRow | null) {
             if (sql.includes("SUM(CASE WHEN auto_renew")) {
               return {
                 auto_renew_count: row?.auto_renew === 1 ? 1 : 0,
-                repeat_reminder_count: row?.repeat_reminder_enabled === 1 ? 1 : 0,
+                repeat_reminder_count: row?.repeat_reminder_enabled === 1 && row?.status !== "cancelled" ? 1 : 0,
               };
             }
             if (sql.includes("SELECT settings_json FROM settings")) {

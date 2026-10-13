@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   captureBookmark,
@@ -14,6 +16,28 @@ import {
 } from "./cloudflare-d1-checkpoint";
 
 const bookmark = "00000085-0000024c-00004c6d-8e61117bf38d7adb71b934ebbf891683";
+
+test("the printed recovery command forwards options through the actual pnpm script", () => {
+  const environment: NodeJS.ProcessEnv = { ...process.env, CI: "1" };
+  // 清除云端凭据，让真实 CLI 在参数解析后、任何 API 调用前停止；测试命令不能触及远端资源。
+  delete environment["CLOUDFLARE_API_TOKEN"];
+  delete environment["CLOUDFLARE_ACCOUNT_ID"];
+  const command = deploymentRecoveryCommand(bookmark, {
+    configPath: "/missing-renewlet-fixture/normal 'quoted'.json",
+    maintenanceConfigPath: "/missing-renewlet-fixture/maintenance config.json",
+    workerVersion: "12345678-abcd-4321-abcd-1234567890ab",
+  });
+  const result = spawnSync("/bin/sh", ["-c", command], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    env: environment,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Usage: cloudflare-deploy/);
+});
 
 test("strictly parses Wrangler bookmark JSON", () => {
   assert.equal(parseBookmarkJson(JSON.stringify({ bookmark })), bookmark);

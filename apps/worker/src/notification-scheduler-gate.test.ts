@@ -1,9 +1,10 @@
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runScheduledNotifications } from "./notifications";
-import { listNotificationDueUsers } from "./subscription-scheduler-state";
+import { runScheduledForUser } from "./notifications";
 import type { Env } from "./types";
+import { notificationSenders } from "./notification-channel-send";
+import { subscriptionRow } from "./subscription-d1-test-support";
 
 vi.mock("./smtp", () => ({
   notificationSmtpConfig: () => {
@@ -75,46 +76,40 @@ function schedulerState(repeatReminderCount: number) {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("Cloudflare notification scheduler gate", () => {
-  it("pages past retained due users by excluding users already handled in the same tick", async () => {
-    const queries: FakeD1Query[] = [];
-    const env = fakeEnv((query) => {
-      queries.push(query);
-      if (query.method === "all" && query.sql.includes("FROM subscription_scheduler_state AS scheduler")) {
-        return d1All([{ user_id: "usr_later" }]);
-      }
-      throw new Error(`unexpected ${query.method} query: ${query.sql}`);
-    });
-
-    const users = await listNotificationDueUsers(env, new Date("2026-01-09T08:00:00.000Z"), 1, ["usr_retained"]);
-
-    expect(users).toEqual([{ user_id: "usr_later" }]);
-    expect(queries[0]?.sql).toContain("scheduler.user_id NOT IN (?)");
-    expect(queries[0]?.params).toEqual(["2026-01-09T08:00:00Z", "2026-01-09T08:00:00Z", "usr_retained", 1]);
-  });
-
-  it("skips non-due scheduled ticks without subscription candidate scans when repeat gate is empty", async () => {
+  it.each(["claim", "snapshot", "finalize", "skip"])("keeps the due state after losing the %s race", async (phase) => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-09T07:00:00.000Z"));
-    const subscriptionQueries: string[] = [];
+    vi.setSystemTime(new Date("2026-01-09T08:00:00.000Z"));
+    const sender = vi.spyOn(notificationSenders, "webhook").mockResolvedValue(undefined);
+    let dueWrites = 0;
+    let finalizations = 0;
     const env = fakeEnv(({ sql, method }) => {
-      if (method === "all" && sql.includes("FROM subscription_scheduler_state AS scheduler")) return d1All([]);
-      if (method === "first" && sql.includes("SELECT settings_json FROM settings")) {
-        return { settings_json: JSON.stringify(settings()) };
-      }
-      if (method === "first" && sql.includes("FROM subscription_scheduler_state")) return schedulerState(0);
-      if (method === "all" && sql.includes("FROM subscriptions")) {
-        subscriptionQueries.push(sql);
-        return d1All([]);
-      }
+      if (method === "all" && sql.includes("FROM subscription_scheduler_state AS scheduler")) return d1All([{ user_id: "usr_due" }]);
+      if (method === "first" && sql.includes("SELECT settings_json FROM settings")) return { settings_json: JSON.stringify(settings({ enabledChannels: phase === "skip" ? [] : ["webhook"] })) };
+      if (method === "first" && sql.includes("FROM subscription_scheduler_state")) return { ...schedulerState(0), auto_renew_count: 0 };
+      if (method === "all" && sql.includes("FROM subscriptions")) return d1All([subscriptionRow("sub_due", { user_id: "usr_due", start_date: "2026-01-01", next_billing_date: "2026-01-10", reminder_days: 1 })]);
+      if (method === "first" && sql.includes("FROM notification_jobs")) return {
+        id: "job_due", user_id: "usr_due", status: "failed", attempts: 1,
+        scheduled_local_date: "2026-01-09", scheduled_local_time: "08:00", time_zone: "UTC", scheduled_instant_utc: "2026-01-09T08:00:00Z",
+        created_at: "2026-01-09T08:00:00Z", updated_at: "2026-01-09T08:00:00Z", last_error: "old failure",
+        result_json: JSON.stringify({ source: "cron", channels: { attempted: ["webhook"], succeeded: [], failed: [{ channel: "webhook", error: "old failure" }] } }),
+      };
+      if (method === "run" && sql.includes("SET status = 'sending'")) return d1Run(phase === "claim" ? 0 : 1);
+      if (method === "run" && sql.includes("notification_job_messages")) return d1Run(0);
+      if (method === "run" && sql.includes("UPDATE notification_jobs")) { finalizations++; return d1Run(phase === "finalize" && finalizations === 1 ? 1 : 0); }
+      if (method === "run" && sql.includes("subscription_scheduler_state")) { dueWrites++; return d1Run(1); }
+      if (method === "first" && sql.includes("SUM(CASE WHEN auto_renew")) return { auto_renew_count: 0, repeat_reminder_count: 0 };
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
-
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
-
-    expect(subscriptionQueries).toHaveLength(0);
+    const error = vi.spyOn(console, "error");
+    await runScheduledForUser(env, "usr_due");
+    expect(error).not.toHaveBeenCalled();
+    expect(sender).toHaveBeenCalledTimes(phase === "finalize" ? 1 : 0);
+    expect(finalizations).toBe(phase === "claim" ? 0 : phase === "finalize" ? 2 : 1);
+    expect(dueWrites).toBe(0);
   });
 
   it("uses repeat candidates without full subscription scans when repeat gate is present", async () => {
@@ -136,7 +131,7 @@ describe("Cloudflare notification scheduler gate", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(subscriptionQueries).toHaveLength(1);
     expect(subscriptionQueries[0]).toContain("repeat_reminder_enabled = 1");
@@ -184,7 +179,7 @@ describe("Cloudflare notification scheduler gate", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(mirrorRefreshCount).toBe(1);
     expect(schedulerRefreshCount).toBe(1);

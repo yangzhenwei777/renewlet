@@ -14,6 +14,7 @@ import {
   subscriptionSchedulerAggregateStatement,
   subscriptionSchedulerDeltaStatement,
   subscriptionSchedulerMutationStatement,
+  subscriptionRepeatReminderContribution,
 } from "./subscription-scheduler-state";
 import type { Env, SubscriptionRow, SubscriptionUserStatsRow } from "./types";
 
@@ -53,7 +54,7 @@ export interface SubscriptionDerivedBulkWritePlan extends SubscriptionDerivedWri
   fact: D1PreparedStatement;
 }
 
-/** 在线写入与离线 v3 修复共享此列序；任何顺序变化都必须同步 SQL placeholder 和校验器。 */
+/** 在线写入与离线 v4 修复共享此列序；任何顺序变化都必须同步 SQL placeholder 和校验器。 */
 export const SUBSCRIPTION_LIST_INDEX_COLUMNS = [
   "subscription_id", "user_id", "name", "website", "notes", "search_text_lower", "category", "billing_cycle",
   "currency", "payment_method", "status", "pinned", "public_hidden", "next_billing_date", "trial_end_date",
@@ -187,7 +188,7 @@ export function subscriptionDerivedBulkMutationPlan(
     if (mutation.before) adjustStatusCount(statusDeltas, mutation.before.status, -1);
     if (mutation.after) adjustStatusCount(statusDeltas, mutation.after.status, 1);
     autoDelta += Number(mutation.after?.auto_renew === 1) - Number(mutation.before?.auto_renew === 1);
-    repeatDelta += Number(mutation.after?.repeat_reminder_enabled === 1) - Number(mutation.before?.repeat_reminder_enabled === 1);
+    repeatDelta += subscriptionRepeatReminderContribution(mutation.after) - subscriptionRepeatReminderContribution(mutation.before);
   }
 
   return {
@@ -363,7 +364,7 @@ export async function rebuildSubscriptionDerivedStateForUser(env: Env, userId: s
   ];
   for (const row of rows.results) {
     if (row.auto_renew === 1) autoRenewCount += 1;
-    if (row.repeat_reminder_enabled === 1) repeatReminderCount += 1;
+    repeatReminderCount += subscriptionRepeatReminderContribution(row);
     const tags = normalizeSubscriptionTags(row);
     statements.push(projectionUpsertStatement(env, row, tags));
     statements.push(...tags.map((tag) => env.DB.prepare(SUBSCRIPTION_TAG_UPSERT_SQL).bind(
@@ -563,7 +564,7 @@ function isSubscriptionStatus(value: string): value is SubscriptionStatus {
 }
 
 function nextRepeatDueForRow(row: SubscriptionRow, settings: ApiAppSettings, now: Date): string | null {
-  if (row.repeat_reminder_enabled !== 1) return null;
+  if (subscriptionRepeatReminderContribution(row) === 0) return null;
   const subscription = toApiSubscription(row);
   const current = getRepeatScheduleDecision(now, settings, [subscription], NOTIFICATION_CRON_WINDOW_MINUTES);
   if (current.due) return current.scheduledInstantUtc;

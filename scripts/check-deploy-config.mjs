@@ -37,6 +37,7 @@ import { checkDockerBuildContract } from "./check-docker-build-contract.mjs";
 import { checkDockerProxyContract } from "./check-docker-proxy-contract.mjs";
 import { checkSyncRenewletUpstream } from "./check-deploy-sync-upstream.mjs";
 import { checkWorkflowContracts } from "./check-workflow-contracts.mjs";
+import { checkTypeScriptProjects } from "./check-typescript-projects.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const deployScript = join(repoRoot, "deploy/docker-deploy.sh");
@@ -324,6 +325,7 @@ function checkDockerSelfUpdateLayout() {
 }
 
 function checkCloudflareDeployMigrationScript() {
+  checkTypeScriptProjects(repoRoot);
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
   const workerPackageJson = JSON.parse(readFileSync(join(repoRoot, "apps/worker/package.json"), "utf8"));
   const deployScript = packageJson.scripts?.deploy;
@@ -352,7 +354,7 @@ function checkCloudflareDeployMigrationScript() {
   if (buildCloudflareScript !== "VITE_RENEWLET_RUNTIME=cloudflare pnpm --filter @renewlet/client build && pnpm --filter @renewlet/cloudflare build") {
     throw new Error("package.json build:cloudflare must build both production Static Assets and the Worker bundle without local HTTP header rewrites.");
   }
-  if (workerPackageJson.scripts?.build !== "wrangler deploy --dry-run --config ../../wrangler.jsonc --outdir dist") {
+  if (workerPackageJson.scripts?.build !== "pnpm typecheck && wrangler deploy --dry-run --config ../../wrangler.jsonc --outdir dist") {
     throw new Error("apps/worker build must produce a real Wrangler dry-run bundle from the root deployment config.");
   }
   if (checkDeployScript !== "node scripts/check-deploy-config.mjs && pnpm test:scripts") {
@@ -367,16 +369,17 @@ function checkCloudflareDeployMigrationScript() {
   if (routeParityScript !== "tsx scripts/check-product-route-parity.ts") {
     throw new Error("package.json check:route-parity must compare the Go and Worker runtime registries.");
   }
-  if (!buildAllScript?.includes("pnpm build:client") || !buildAllScript.includes("pnpm --filter @renewlet/cloudflare build") || !buildAllScript.includes("pnpm build:server") || !buildAllScript.includes("pnpm build:website")) {
-    throw new Error("package.json build:all must build client, Worker bundle, Go server, and website after shared/Worker typechecks.");
+  // 两种前端共用dist；必须先同步并嵌入Docker产物，再生成Cloudflare绑定对应的静态资源。
+  if (buildAllScript !== "pnpm typecheck:all && pnpm build:docker && pnpm build:cloudflare && pnpm build:website") {
+    throw new Error("package.json build:all must typecheck and build Docker with synchronized assets, Cloudflare, then website.");
   }
   if (typecheckScript !== "pnpm typecheck:all") {
     throw new Error("package.json typecheck must use the complete monorepo type gate.");
   }
-  if (typecheckScriptsScript !== "tsc --noEmit --project tsconfig.json") {
+  if (typecheckScriptsScript !== "tsc --noEmit --project tsconfig.scripts.json") {
     throw new Error("package.json typecheck:scripts must compile every root TypeScript operations script.");
   }
-  if (!typecheckAllScript?.includes("pnpm typecheck:scripts") || !typecheckAllScript.includes("pnpm --filter @renewlet/server typecheck")) {
+  if (typecheckAllScript !== "tsc --build --stopBuildOnErrors && pnpm --filter @renewlet/server typecheck") {
     throw new Error("package.json typecheck:all must include root scripts and Go vet through the Docker server workspace.");
   }
   if (!checkCloudflareScript?.includes("pnpm typecheck:scripts")) {

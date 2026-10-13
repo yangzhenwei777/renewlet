@@ -486,41 +486,23 @@ func newCalendarFeedLabelResolver(app core.App, userID string, settings appSetti
 		return resolver, err
 	}
 	// 公开 ICS route 没有登录态上下文；用户配置只做优先查找，缺失的内置项回 server i18n，未知自定义 value 保留原文。
-	resolver.categoryByValue = calendarFeedLabelMap(config.Categories, resolver.locale)
-	resolver.paymentMethodByValue = calendarFeedLabelMap(config.PaymentMethods, resolver.locale)
+	resolver.categoryByValue = calendarFeedLabelMap(config.Categories, resolver.locale, calendarFeedBuiltInCategoryLabelKey)
+	resolver.paymentMethodByValue = calendarFeedLabelMap(config.PaymentMethods, resolver.locale, calendarFeedBuiltInPaymentMethodLabelKey)
 	return resolver, nil
 }
 
-func calendarFeedLabelMap(items []customConfigItem, locale appLocale) map[string]string {
+func calendarFeedLabelMap(items []customConfigItem, locale appLocale, builtInLabelKey func(string) (string, bool)) map[string]string {
 	labels := make(map[string]string, len(items))
 	for _, item := range items {
 		if item.Value == "" {
 			continue
 		}
-		if label := calendarFeedLocalizedConfigLabel(item.Labels, locale); label != "" {
+		key, _ := builtInLabelKey(item.Value)
+		if label := localizedCustomConfigLabel(item.Labels, locale, key); label != "" {
 			labels[item.Value] = label
 		}
 	}
 	return labels
-}
-
-func calendarFeedLocalizedConfigLabel(labels customConfigLabels, locale appLocale) string {
-	if locale == localeEnUS {
-		if labels.EnUS != "" {
-			return labels.EnUS
-		}
-		if labels.ZhCN != "" {
-			return labels.ZhCN
-		}
-		return ""
-	}
-	if labels.ZhCN != "" {
-		return labels.ZhCN
-	}
-	if labels.EnUS != "" {
-		return labels.EnUS
-	}
-	return ""
 }
 
 func (resolver calendarFeedLabelResolver) categoryLabel(value string) string {

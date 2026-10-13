@@ -5,6 +5,7 @@
  */
 import type { NotificationEmailMessage } from "@renewlet/shared/email-template";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
+import type { CronBudget } from "./cron-budget";
 import type { AppLocale } from "./http";
 import { firstNonEmptyText, notificationHttpErrorMessage, requiredSetting } from "./notification-channel-utils";
 import { DEFAULT_SERVER_I18N_LOCALE, serverText } from "./server-i18n";
@@ -24,13 +25,13 @@ type ServerChanResponse = {
   detail?: unknown;
 };
 
-export async function sendServerChan(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<void> {
+export async function sendServerChan(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<void> {
   const sendKey = requiredSetting(settings.serverchanSendKey, serverText(locale, "service.serverchanSendKey"), locale);
   const endpoint = serverChanEndpoint(sendKey, locale);
   const response = await sendNotificationJson(endpoint, {
     title: message.title,
     desp: `${message.content}\n\n${message.timestamp}`,
-  }, "ServerChan", locale, { secrets: [sendKey] });
+  }, "ServerChan", locale, { secrets: [sendKey], ...(budget ? { budget } : {}) });
   await requireServerChanSuccess(response, locale, sendKey, endpoint);
 }
 

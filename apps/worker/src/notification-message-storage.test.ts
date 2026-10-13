@@ -3,7 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import { cronJobResultResponseSchema } from "@renewlet/shared/schemas/notifications";
-import { createCronJobResult, createNotificationJob, finalizeNotificationJob, getNotificationJob, readJobChannels } from "./notification-jobs";
+import { createCronJobResult, createNotificationJob, finalizeNotificationJob, getNotificationJob, markNotificationJobSending, readJobChannels } from "./notification-jobs";
 import { readNotificationHistoryRows, splitNotificationJobMessage } from "./notification-message-storage";
 import type { Env } from "./types";
 import upgradeFixtures from "../../../packages/shared/src/contract-fixtures/notification-message-upgrade-fixtures.json";
@@ -63,6 +63,47 @@ function largeResult(size: number) {
 }
 
 describe("notification message snapshot storage", () => {
+  it.each(["failed", "sending"] as const)("grants one %s claim and fences the old executor's message and channels", async (status) => {
+    const { env, database } = databaseFixture();
+    const previous = largeResult(100);
+    previous.channels = { attempted: ["telegram", "webhook"], succeeded: ["telegram"], failed: [{ channel: "webhook", error: "old failure" }] };
+    const { row } = await createNotificationJob(env, "owner", previous.schedule, "sending", 1);
+    expect(await finalizeNotificationJob(env, row, "owner", previous.schedule, "failed", 1, "old failure", previous)).toBe(true);
+    database.prepare("UPDATE notification_jobs SET status = ?, updated_at = '2026-01-01T00:00:00Z' WHERE id = ?").run(status, row?.id ?? "");
+    const original = await getNotificationJob(env, "owner", previous.schedule);
+    if (!original) throw new Error("Missing original job");
+    const contenders = await Promise.all(Array.from({ length: 8 }, () => markNotificationJobSending(env, { ...original }, 2)));
+    const winners = contenders.filter((claim) => claim !== null);
+    expect(winners).toHaveLength(1);
+    const winner = winners[0];
+    if (!winner) throw new Error("Missing winning claim");
+    const before = await readNotificationHistoryRows(env, "owner", "all", 20);
+    expect(await finalizeNotificationJob(env, original, "owner", previous.schedule, "sent", 1, null, largeResult(5000))).toBe(false);
+    expect(await readNotificationHistoryRows(env, "owner", "all", 20)).toEqual(before);
+    const replacement = await markNotificationJobSending(env, winner, 3);
+    if (!replacement) throw new Error("Missing replacement claim");
+    const completed = largeResult(1000);
+    completed.channels = { attempted: ["telegram", "webhook"], succeeded: ["telegram", "webhook"], failed: [] };
+    expect(await finalizeNotificationJob(env, replacement, "owner", completed.schedule, "sent", 3, null, completed)).toBe(true);
+    const after = await readNotificationHistoryRows(env, "owner", "all", 20);
+    expect(JSON.parse(after[0]?.result_json ?? "{}")).toEqual(completed);
+    expect(await finalizeNotificationJob(env, winner, "owner", previous.schedule, "failed", 2, "late failure", previous)).toBe(false);
+    expect(await finalizeNotificationJob(env, null, "owner", previous.schedule, "skipped", 1, null, previous)).toBe(false);
+    expect(await readNotificationHistoryRows(env, "owner", "all", 20)).toEqual(after);
+    expect(readJobChannels(await getNotificationJob(env, "owner", previous.schedule))).toEqual(completed.channels);
+  });
+
+  it("includes updated_at in the claim identity when status and attempts are unchanged", async () => {
+    const { env, database } = databaseFixture();
+    const result = largeResult(1);
+    const { row } = await createNotificationJob(env, "owner", result.schedule, "failed", 1);
+    if (!row) throw new Error("Missing claim");
+    database.prepare("UPDATE notification_jobs SET updated_at = '2026-01-01T00:00:00Z' WHERE id = ?").run(row.id);
+    expect(await markNotificationJobSending(env, row, 2)).toBeNull();
+    expect(await finalizeNotificationJob(env, row, "owner", result.schedule, "sent", 1, null, result)).toBe(false);
+    expect(database.prepare("SELECT COUNT(*) AS count FROM notification_job_messages").get()?.["count"]).toBe(0);
+  });
+
   it.each(upgradeFixtures.fixtures)("converts the actual $version result without changing message text", async (fixture) => {
     const { env, database } = databaseFixture(false);
     const { row } = await createNotificationJob(env, "owner", fixture.result.schedule, "failed", 2);
@@ -117,7 +158,7 @@ describe("notification message snapshot storage", () => {
     const { row } = await createNotificationJob(env, "owner", original.schedule, "sending", 1);
     await finalizeNotificationJob(env, row, "owner", original.schedule, "failed", 1, "failed", original);
     database.exec(`CREATE TRIGGER fail_final_status BEFORE UPDATE ON notification_jobs BEGIN SELECT RAISE(ABORT, 'injected final failure'); END`);
-    await expect(finalizeNotificationJob(env, row, "owner", original.schedule, "sent", 2, null, largeResult(5000))).rejects.toThrow("injected final failure");
+    await expect(finalizeNotificationJob(env, await getNotificationJob(env, "owner", original.schedule), "owner", original.schedule, "sent", 2, null, largeResult(5000))).rejects.toThrow("injected final failure");
     expect((await getNotificationJob(env, "owner", original.schedule))?.status).toBe("failed");
     expect(JSON.parse((await readNotificationHistoryRows(env, "owner", "all", 20))[0]?.result_json ?? "{}")).toEqual(original);
   });

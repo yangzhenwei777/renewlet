@@ -1,3 +1,4 @@
+import type { CronBudget } from "./cron-budget";
 import { serverText } from "./server-i18n";
 import type { AppLocale } from "./http";
 import { sendUpstreamRequest } from "./upstream-http";
@@ -14,7 +15,7 @@ const LOCAL_HOSTNAMES = new Set(["localhost"]);
  *
  * Worker 需要主动请求这些 URL，因此必须同时限制 HTTPS、凭据 URL、本地域名和解析到内网/保留网段的地址。
  */
-export async function assertSafeOutboundUrl(raw: string, locale: AppLocale, resolveHost: OutboundResolver = resolveHostViaDoh): Promise<URL> {
+export async function assertSafeOutboundUrl(raw: string, locale: AppLocale, resolveHost?: OutboundResolver, budget?: CronBudget): Promise<URL> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -30,7 +31,7 @@ export async function assertSafeOutboundUrl(raw: string, locale: AppLocale, reso
   }
 
   const literal = parseIpLiteral(hostname);
-  const resolved = literal ? [literal] : await resolveHost(hostname);
+  const resolved = literal ? [literal] : await (resolveHost ?? ((host) => resolveHostViaDoh(host, budget)))(hostname);
   if (resolved.length === 0 || resolved.some(isUnsafeOutboundIp)) {
     throw new Error(serverText(locale, "url.privateOrLocalNotAllowedGeneric"));
   }
@@ -42,14 +43,15 @@ export function isUnsafeOutboundHostLiteral(hostname: string): boolean {
   return literal ? isUnsafeOutboundIp(literal) : false;
 }
 
-async function resolveHostViaDoh(hostname: string): Promise<string[]> {
+async function resolveHostViaDoh(hostname: string, budget?: CronBudget): Promise<string[]> {
   // Workers 没有 Node DNS API；用 Cloudflare DoH 同时查 A/AAAA，避免只检查字面 hostname 而漏掉内网解析。
-  const results = await Promise.all(["A", "AAAA"].map(async (type) => {
+  const results = await Promise.allSettled(["A", "AAAA"].map(async (type) => {
     const url = new URL(DNS_JSON_ENDPOINT);
     url.searchParams.set("name", hostname);
     url.searchParams.set("type", type);
     const response = await sendUpstreamRequest(url, { headers: { accept: "application/dns-json" } }, {
       provider: "Cloudflare DNS",
+      ...(budget ? { budget } : {}),
       timeoutMs: DNS_JSON_TIMEOUT_MS,
     });
     if (!response.ok) return [];
@@ -58,7 +60,10 @@ async function resolveHostViaDoh(hostname: string): Promise<string[]> {
       .map((answer) => parseIpLiteral(answer.data ?? ""))
       .filter((value): value is string => value !== null);
   }));
-  return results.flat();
+  // 一条DNS链失败后也要等另一条停止；否则已提交渠道结果之后仍有请求消耗本片额度。
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
 }
 
 function parseIpLiteral(value: string): string | null {

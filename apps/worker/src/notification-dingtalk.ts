@@ -5,6 +5,7 @@
  */
 import type { NotificationEmailMessage } from "@renewlet/shared/email-template";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
+import type { CronBudget } from "./cron-budget";
 import type { AppLocale } from "./http";
 import { assertSafeOutboundUrl } from "./outbound-url-policy";
 import { sendNotificationJson } from "./notification-http";
@@ -44,16 +45,16 @@ type DingTalkPayload = DingTalkMarkdownPayload | DingTalkTextPayload;
 const DINGTALK_BRAND = "Renewlet";
 const textEncoder = new TextEncoder();
 
-export async function sendDingTalk(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<void> {
+export async function sendDingTalk(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<void> {
   const rawWebhook = requiredSetting(settings.dingtalkWebhookUrl, serverText(locale, "service.dingtalkWebhookURL"), locale);
-  const endpoint = await dingtalkEndpoint(rawWebhook, settings.dingtalkSecret, locale);
+  const endpoint = await dingtalkEndpoint(rawWebhook, settings.dingtalkSecret, locale, Date.now(), budget);
   const secrets = dingTalkSecrets(rawWebhook, endpoint.toString(), settings.dingtalkSecret);
-  const response = await sendNotificationJson(endpoint, dingTalkPayload(settings, message), "DingTalk", locale, { secrets });
+  const response = await sendNotificationJson(endpoint, dingTalkPayload(settings, message), "DingTalk", locale, { secrets, ...(budget ? { budget } : {}) });
   await requireDingTalkSuccess(response, locale, secrets);
 }
 
-export async function dingtalkEndpoint(rawWebhook: string, secret: string, locale: AppLocale, nowMs = Date.now()): Promise<URL> {
-  const endpoint = await assertSafeOutboundUrl(rawWebhook, locale);
+export async function dingtalkEndpoint(rawWebhook: string, secret: string, locale: AppLocale, nowMs = Date.now(), budget?: CronBudget): Promise<URL> {
+  const endpoint = await assertSafeOutboundUrl(rawWebhook, locale, undefined, budget);
   if (!secret.trim()) return endpoint;
   return await signedDingTalkWebhookUrl(endpoint, secret, nowMs);
 }

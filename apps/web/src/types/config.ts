@@ -227,6 +227,10 @@ function appendMissingDefaultCategories(items: ConfigItem[]): ConfigItem[] {
   ];
 }
 
+function hasSamePersistedLabels(left: LocalizedLabels, right: LocalizedLabels): boolean {
+  return left["zh-CN"] === right["zh-CN"] && left["en-US"] === right["en-US"];
+}
+
 /**
  * 规范化分类列表：
  * - value 必须唯一（重复项保留首次出现）
@@ -236,7 +240,16 @@ function appendMissingDefaultCategories(items: ConfigItem[]): ConfigItem[] {
 export function normalizeCategories(items: ConfigItem[]): ConfigItem[] {
   const unique = uniqByValue(items);
   if (unique.length === 0) return getDefaultCategories();
-  return isLegacyDefaultCategoryList(unique) ? appendMissingDefaultCategories(unique) : unique;
+  const normalized = isLegacyDefaultCategoryList(unique) ? appendMissingDefaultCategories(unique) : unique;
+  const defaultByValue = new Map(getDefaultCategories().map((item) => [item.value, item]));
+
+  // 配置 JSON 只保留中英字段；未改名的内置项在读入内存时重新绑定稳定来源，用户文本不参与身份判断。
+  return normalized.map((item) => {
+    const builtIn = defaultByValue.get(item.value);
+    return builtIn && hasSamePersistedLabels(item.labels, builtIn.labels)
+      ? { ...item, labels: builtIn.labels }
+      : item;
+  });
 }
 
 /**

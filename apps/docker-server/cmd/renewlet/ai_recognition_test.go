@@ -556,6 +556,7 @@ func TestAIRecognitionPromptUsesSharedJSONContract(t *testing.T) {
 		Tags: []string{"VPS", "云服务器"},
 	}
 	userPrompt := buildAIRecognitionUserPrompt("sample service 15元 1个月", "Asia/Shanghai", "CNY", 2, localeZhCN, configContext)
+	russianPrompt := buildAIRecognitionUserPrompt("sample service 15 руб. в месяц", "Europe/Moscow", "RUB", 0, localeRuRU, configContext)
 	for _, want := range []string{
 		"Return exactly one valid JSON object parseable by JSON.parse",
 		"no Markdown",
@@ -591,7 +592,7 @@ func TestAIRecognitionPromptUsesSharedJSONContract(t *testing.T) {
 		"notes.value must be non-null for describable services",
 		"dynamic evidence from this request",
 		"Generated user-facing metadata must follow User locale",
-		"use English for en-US and Simplified Chinese for zh-CN",
+		"use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU",
 		"Do not translate source=input text, Existing user tags",
 		"Prefer Existing user tags when they fit.",
 		"stable and reusable across multiple subscriptions",
@@ -620,6 +621,14 @@ func TestAIRecognitionPromptUsesSharedJSONContract(t *testing.T) {
 	} {
 		if strings.Contains(userPrompt, forbidden) {
 			t.Fatalf("user prompt should not contain brand mapping example %q:\n%s", forbidden, userPrompt)
+		}
+	}
+	for _, want := range []string{
+		"- User locale: ru-RU",
+		"use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU",
+	} {
+		if !strings.Contains(russianPrompt, want) {
+			t.Fatalf("Russian user prompt missing %q:\n%s", want, russianPrompt)
 		}
 	}
 }

@@ -5,8 +5,10 @@ package main
 // 注意： 唯一索引冲突被视为并发执行已抢占；修改这里的错误处理会直接影响重复发送保护。
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,32 +56,94 @@ func createNotificationJob(app core.App, userID string, schedule localScheduleDe
 	return record, true, nil
 }
 
-func markNotificationJobSending(app core.App, record *core.Record, attempts int) error {
-	record.Set("status", notificationStatusSending)
-	record.Set("attempts", attempts)
-	record.Set("lastError", "")
-	return app.Save(record)
+func markNotificationJobSending(app core.App, record *core.Record, attempts int) (*core.Record, error) {
+	var claimed *core.Record
+	// 事务内核对读取时的身份；事务外才允许外部发送，不能以全局锁替代数据库抢占。
+	err := app.RunInTransaction(func(txApp core.App) error {
+		current, err := txApp.FindRecordById("notification_jobs", record.Id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read notification claim: %w", err)
+		}
+		if !notificationJobClaimMatches(current, record) {
+			return nil
+		}
+		current.Set("status", notificationStatusSending)
+		current.Set("attempts", attempts)
+		current.Set("lastError", "")
+		if err := txApp.Save(current); err != nil {
+			return fmt.Errorf("save notification claim: %w", err)
+		}
+		claimed = current
+		return nil
+	})
+	return claimed, err
 }
 
-// finalizeNotificationJob 写入任务最终状态和严格 result。
-func finalizeNotificationJob(app core.App, record *core.Record, userID string, schedule localScheduleDecision, status string, lastError string, result notificationJobResult) error {
+func failExhaustedNotificationJob(app core.App, record *core.Record) (bool, error) {
+	settled := false
+	// 撤销耗尽次数的过期sending身份，保留渠道成功快照；迟到结果不得覆盖终止状态。
+	err := app.RunInTransaction(func(txApp core.App) error {
+		current, err := txApp.FindRecordById("notification_jobs", record.Id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read exhausted notification: %w", err)
+		}
+		if !notificationJobClaimMatches(current, record) {
+			return nil
+		}
+		current.Set("status", notificationStatusFailed)
+		current.Set("lastError", "max_retries_reached")
+		if err := txApp.Save(current); err != nil {
+			return fmt.Errorf("settle exhausted notification: %w", err)
+		}
+		settled = true
+		return nil
+	})
+	return settled, err
+}
+
+func notificationJobClaimMatches(current, claimed *core.Record) bool {
+	// PocketBase落库精度为毫秒；刚Save的内存时间仍可能带纳秒，身份比较必须使用同一持久化表示。
+	return current.Id == claimed.Id && current.GetString("user") == claimed.GetString("user") &&
+		current.GetString("status") == claimed.GetString("status") && current.GetInt("attempts") == claimed.GetInt("attempts") &&
+		current.GetDateTime("updated").String() == claimed.GetDateTime("updated").String()
+}
+
+// finalizeNotificationJob 的 false 表示接管权已丢失；调用方不得推进该执行者的提醒状态。
+func finalizeNotificationJob(app core.App, record *core.Record, userID string, schedule localScheduleDecision, status string, lastError string, result notificationJobResult) (bool, error) {
+	if record != nil && record.GetString("user") != userID {
+		return false, errors.New("notification job owner mismatch")
+	}
 	payload, err := json.Marshal(result.Message)
 	if err != nil {
-		return err
+		return false, fmt.Errorf("encode notification message: %w", err)
 	}
 	parts := notificationMessageParts(payload)
 	metadata := notificationJobStoredResult{notificationJobMetadata: result.notificationJobMetadata, MessageChunkCount: len(parts)}
-	// 渠道完成状态和完整消息快照是一次提交；任一写入失败都不能留下新状态配半份正文。
-	return app.RunInTransaction(func(txApp core.App) error {
+	finalized := false
+	// 接管身份、渠道结果和完整消息快照由同一事务保护；旧执行者不能覆盖新发送者的结果。
+	err = app.RunInTransaction(func(txApp core.App) error {
 		var updated *core.Record
 		var err error
 		if record == nil {
-			updated, _, err = createNotificationJob(txApp, userID, schedule, status, 1)
+			var created bool
+			updated, created, err = createNotificationJob(txApp, userID, schedule, notificationStatusSending, 1)
+			if err == nil && !created {
+				return nil
+			}
 		} else {
 			updated, err = txApp.FindRecordById("notification_jobs", record.Id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("read notification finalization claim: %w", err)
 		}
 		if updated == nil {
 			return errors.New("notification job was not created")
@@ -87,14 +151,22 @@ func finalizeNotificationJob(app core.App, record *core.Record, userID string, s
 		if updated.GetString("user") != userID {
 			return errors.New("notification job owner mismatch")
 		}
+		if record != nil && !notificationJobClaimMatches(updated, record) {
+			return nil
+		}
 		if err := writeNotificationJobMessage(txApp, updated.Id, parts); err != nil {
-			return err
+			return fmt.Errorf("write notification message: %w", err)
 		}
 		updated.Set("status", status)
 		updated.Set("lastError", lastError)
 		updated.Set("result", metadata)
-		return txApp.Save(updated)
+		if err := txApp.Save(updated); err != nil {
+			return fmt.Errorf("save notification final state: %w", err)
+		}
+		finalized = true
+		return nil
 	})
+	return finalized, err
 }
 
 // createJobResult 构造历史面板可解析的 cron result。
@@ -180,9 +252,19 @@ func normalizeNotificationJobResult(result notificationJobResult) notificationJo
 // channelsToSend 返回本轮实际需要发送的渠道。
 // 对失败重试只发送仍启用且上次失败的渠道，防止成功渠道重复通知。
 func channelsToSend(existing *core.Record, previous jobChannels, enabled []string) []string {
+	succeeded := map[string]struct{}{}
+	for _, channel := range previous.Succeeded {
+		succeeded[channel] = struct{}{}
+	}
+	pending := []string{}
+	for _, channel := range enabled {
+		if _, sent := succeeded[channel]; !sent {
+			pending = append(pending, channel)
+		}
+	}
 	if existing != nil && existing.GetString("status") == notificationStatusFailed {
 		enabledSet := map[string]struct{}{}
-		for _, channel := range enabled {
+		for _, channel := range pending {
 			enabledSet[channel] = struct{}{}
 		}
 		out := []string{}
@@ -193,7 +275,7 @@ func channelsToSend(existing *core.Record, previous jobChannels, enabled []strin
 		}
 		return uniqueValidChannels(out)
 	}
-	return enabled
+	return pending
 }
 
 // mergeChannelResults 合并历史渠道结果和本轮发送结果。

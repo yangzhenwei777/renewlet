@@ -20,6 +20,7 @@ import { requiredSetting } from "./notification-channel-utils";
 import { serverText } from "./server-i18n";
 import type { Env } from "./types";
 import type { AppLocale } from "./http";
+import { CronBudgetExceeded, type CronBudget } from "./cron-budget";
 import type { Channel, SendSummary } from "./notification-jobs";
 
 interface NotificationSenderContext {
@@ -28,6 +29,7 @@ interface NotificationSenderContext {
   message: NotificationEmailMessage;
   locale: AppLocale;
   appUrl?: string;
+  budget?: CronBudget;
 }
 
 export type NotificationSender = (context: NotificationSenderContext) => Promise<void>;
@@ -36,14 +38,14 @@ export type NotificationSender = (context: NotificationSenderContext) => Promise
 export const notificationSenders = {
   telegram: sendTelegramChannel,
   notifyx: sendNotifyxChannel,
-  webhook: ({ settings, message, locale }) => sendWebhook(settings, message, locale),
-  dingtalk: ({ settings, message, locale }) => sendDingTalk(settings, message, locale),
+  webhook: ({ settings, message, locale, budget }) => sendWebhook(settings, message, locale, budget),
+  dingtalk: ({ settings, message, locale, budget }) => sendDingTalk(settings, message, locale, budget),
   wechat: sendWeChatChannel,
   bark: sendBarkChannel,
-  email: ({ env, settings, message, locale, appUrl }) => sendEmail(env, settings, message, locale, appUrl),
-  serverchan: ({ settings, message, locale }) => sendServerChan(settings, message, locale),
-  discord: ({ settings, message, locale }) => sendDiscord(settings, message, locale),
-  pushplus: ({ settings, message, locale }) => sendPushPlus(settings, message, locale),
+  email: ({ env, settings, message, locale, appUrl, budget }) => sendEmail(env, settings, message, locale, appUrl, budget),
+  serverchan: ({ settings, message, locale, budget }) => sendServerChan(settings, message, locale, budget),
+  discord: ({ settings, message, locale, budget }) => sendDiscord(settings, message, locale, budget),
+  pushplus: ({ settings, message, locale, budget }) => sendPushPlus(settings, message, locale, budget),
 } satisfies Record<Channel, NotificationSender>;
 
 // 这里是 Worker 通知渠道分发边界；真正 HTTP 外发统一收口到 notification-http，避免渠道绕过超时和脱敏策略。
@@ -54,14 +56,16 @@ export async function sendChannels(
   message: NotificationEmailMessage,
   locale: AppLocale,
   appUrl?: string,
+  budget?: CronBudget,
 ): Promise<SendSummary> {
   const summary: SendSummary = { attempted: channels, succeeded: [], failed: [] };
   for (const channel of channels) {
     try {
       // 多渠道是“尽力发送”：一个渠道失败要进入 summary，不能吞掉其它渠道的成功。
-      await sendChannel(env, channel, settings, message, locale, appUrl);
+      await sendChannel(env, channel, settings, message, locale, appUrl, budget);
       summary.succeeded.push(channel);
     } catch (error) {
+      if (error instanceof CronBudgetExceeded) throw error;
       const details = error instanceof NotificationChannelError ? error.details : null;
       summary.failed.push({
         channel,
@@ -80,6 +84,7 @@ export async function sendChannel(
   message: NotificationEmailMessage,
   locale: AppLocale,
   appUrl?: string,
+  budget?: CronBudget,
 ): Promise<void> {
   const context: NotificationSenderContext = {
     env,
@@ -87,11 +92,12 @@ export async function sendChannel(
     message,
     locale,
     ...(appUrl ? { appUrl } : {}),
+    ...(budget ? { budget } : {}),
   };
   await notificationSenders[channel](context);
 }
 
-async function sendTelegramChannel({ settings, message, locale }: NotificationSenderContext): Promise<void> {
+async function sendTelegramChannel({ settings, message, locale, budget }: NotificationSenderContext): Promise<void> {
   const token = requiredSetting(settings.telegramBotToken, serverText(locale, "service.telegramBotToken"), locale);
   const chatId = requiredSetting(settings.telegramChatId, serverText(locale, "service.telegramChatID"), locale);
   // Telegram 样式只在 sendMessage 边界生效；其它渠道继续消费纯文本，避免跨渠道模板语义互相污染。
@@ -100,21 +106,21 @@ async function sendTelegramChannel({ settings, message, locale }: NotificationSe
     chat_id: chatId,
     ...telegramMessage,
     link_preview_options: { is_disabled: true },
-  }, "Telegram", locale, undefined, { secrets: [token, chatId] });
+  }, "Telegram", locale, undefined, { secrets: [token, chatId], ...(budget ? { budget } : {}) });
 }
 
-async function sendNotifyxChannel({ settings, message, locale }: NotificationSenderContext): Promise<void> {
+async function sendNotifyxChannel({ settings, message, locale, budget }: NotificationSenderContext): Promise<void> {
   const apiKey = requiredSetting(settings.notifyxApiKey, serverText(locale, "service.notifyxAPIKey"), locale);
   await postJson(`https://www.notifyx.cn/api/v1/send/${encodeURIComponent(apiKey)}`, {
     title: message.title,
     content: message.content,
     description: message.timestamp,
-  }, "NotifyX", locale, undefined, { secrets: [apiKey] });
+  }, "NotifyX", locale, undefined, { secrets: [apiKey], ...(budget ? { budget } : {}) });
 }
 
-async function sendWeChatChannel({ settings, message, locale }: NotificationSenderContext): Promise<void> {
+async function sendWeChatChannel({ settings, message, locale, budget }: NotificationSenderContext): Promise<void> {
   const rawUrl = requiredSetting(settings.wechatWebhookUrl, serverText(locale, "service.wechatWebhookURL"), locale);
-  await postJson(await safeHttpsUrl(rawUrl, locale), {
+  await postJson(await safeHttpsUrl(rawUrl, locale, budget), {
     msgtype: settings.wechatMessageType,
     [settings.wechatMessageType]: settings.wechatMessageType === "markdown"
       ? { content: plainNotificationMessage(message) }
@@ -122,18 +128,18 @@ async function sendWeChatChannel({ settings, message, locale }: NotificationSend
           content: plainNotificationMessage(message),
           mentioned_mobile_list: settings.wechatAtAll ? ["@all"] : splitList(settings.wechatAtPhones),
         },
-  }, "WeCom", locale, undefined, { secrets: [rawUrl] });
+  }, "WeCom", locale, undefined, { secrets: [rawUrl], ...(budget ? { budget } : {}) });
 }
 
-async function sendBarkChannel({ settings, message, locale }: NotificationSenderContext): Promise<void> {
+async function sendBarkChannel({ settings, message, locale, budget }: NotificationSenderContext): Promise<void> {
   const deviceKey = requiredSetting(settings.barkDeviceKey, serverText(locale, "service.barkDeviceKey"), locale);
-  const response = await sendNotificationRequest(await barkUrl(settings, message, locale), { method: "GET" }, "Bark", locale, { secrets: [deviceKey, settings.barkServerUrl] });
+  const response = await sendNotificationRequest(await barkUrl(settings, message, locale, budget), { method: "GET" }, "Bark", locale, { secrets: [deviceKey, settings.barkServerUrl], ...(budget ? { budget } : {}) });
   await requireNotificationHttpOk(response, "Bark", locale, { secrets: [deviceKey, settings.barkServerUrl] });
 }
 
-async function sendWebhook(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<void> {
+async function sendWebhook(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<void> {
   const rawEndpoint = requiredSetting(settings.webhookUrl, serverText(locale, "service.webhookURL"), locale);
-  const endpoint = await safeHttpsUrl(rawEndpoint, locale);
+  const endpoint = await safeHttpsUrl(rawEndpoint, locale, budget);
   const headers = parseHeaders(settings.webhookHeaders);
   const secrets = [rawEndpoint, ...headersSecrets(headers)];
   if (settings.webhookMethod === "GET") {
@@ -142,25 +148,28 @@ async function sendWebhook(settings: ApiAppSettings, message: NotificationEmailM
     url.searchParams.set("title", message.title);
     url.searchParams.set("content", message.content);
     url.searchParams.set("timestamp", message.timestamp);
-    const response = await sendNotificationRequest(url, { method: "GET", headers }, "Webhook", locale, { secrets });
+    const response = await sendNotificationRequest(url, { method: "GET", headers }, "Webhook", locale, { secrets, ...(budget ? { budget } : {}) });
     await requireNotificationHttpOk(response, "Webhook", locale, { secrets });
     return;
   }
   headers.set("content-type", headers.get("content-type") ?? "application/json");
   const body = renderWebhookPayloadTemplate(settings.webhookPayload, message, locale);
-  const response = await sendNotificationRequest(endpoint, { method: "POST", headers, body }, "Webhook", locale, { secrets });
+  const response = await sendNotificationRequest(endpoint, { method: "POST", headers, body }, "Webhook", locale, { secrets, ...(budget ? { budget } : {}) });
   await requireNotificationHttpOk(response, "Webhook", locale, { secrets });
 }
 
-async function sendEmail(env: Env, settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, appUrl?: string): Promise<void> {
+async function sendEmail(env: Env, settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, appUrl?: string, budget?: CronBudget): Promise<void> {
   let to = splitList(settings.recipientEmail);
   if (!settings.notifyMultipleAddresses && to.length > 1) to = to.slice(0, 1);
   if (to.length === 0) throw new Error(serverText(locale, "smtp.recipientEmpty"));
   const email = buildNotificationEmail(settings, message, { locale, ...(appUrl ? { appUrl } : {}) });
   const smtpConfig = notificationSmtpConfig(settings, locale);
   try {
+    // SMTP使用TCP及可选STARTTLS；沿用保守预留，不能记作已测量的HTTP请求。
+    budget?.consumeExternal(3);
     await sendSmtpEmail(smtpConfig, { to, subject: email.subject, text: email.text, html: email.html }, locale);
   } catch (error) {
+    if (error instanceof CronBudgetExceeded) throw error;
     const message = error instanceof Error ? redactUpstreamSecrets(error.message, [smtpConfig.password, smtpConfig.username]) : serverText(locale, "smtp.deliveryFailed");
     throw new NotificationChannelError(message, createUpstreamErrorDetails({
       responseText: message,
@@ -174,23 +183,24 @@ async function postJson(
   channel: string,
   locale: AppLocale,
   headers?: Record<string, string>,
-  options: { secrets?: readonly string[] } = {},
+  options: { secrets?: readonly string[]; budget?: CronBudget } = {},
 ): Promise<void> {
   const response = await sendNotificationJson(url, payload, channel, locale, {
     ...(headers ? { headers } : {}),
     ...(options.secrets ? { secrets: options.secrets } : {}),
+    ...(options.budget ? { budget: options.budget } : {}),
   });
   await requireNotificationHttpOk(response, channel, locale, options);
 }
 
-async function safeHttpsUrl(raw: string, locale: AppLocale): Promise<string> {
+async function safeHttpsUrl(raw: string, locale: AppLocale, budget?: CronBudget): Promise<string> {
   // Worker 没有 Go 的 DialContext 钩子；发送前先解析并拒绝内网/本机地址，避免用户配置的通知 URL 变成 SSRF 跳板。
-  const url = await assertSafeOutboundUrl(raw, locale);
+  const url = await assertSafeOutboundUrl(raw, locale, undefined, budget);
   return url.toString();
 }
 
-async function barkUrl(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<string> {
-  const server = (await safeHttpsUrl(settings.barkServerUrl || "https://api.day.app", locale)).replace(/\/+$/, "");
+async function barkUrl(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<string> {
+  const server = (await safeHttpsUrl(settings.barkServerUrl || "https://api.day.app", locale, budget)).replace(/\/+$/, "");
   const key = requiredSetting(settings.barkDeviceKey, serverText(locale, "service.barkDeviceKey"), locale);
   const url = new URL(`${server}/${encodeURIComponent(key)}/${encodeURIComponent(message.title)}/${encodeURIComponent(message.content)}`);
   if (settings.barkSilentPush) url.searchParams.set("isArchive", "1");

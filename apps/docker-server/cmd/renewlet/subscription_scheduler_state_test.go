@@ -158,6 +158,59 @@ func TestSchedulerRefreshRollsBackRepeatSchedule(t *testing.T) {
 	}
 }
 
+func TestCancelledStatusTransitionUpdatesRepeatDerivedState(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	registerRecordHooks(app)
+	user, _ := createRouteTestUser(t, app, "scheduler-cancelled-transition")
+	subscription := createRouteTestSubscription(t, app, user.Id, map[string]interface{}{
+		"autoRenew":              false,
+		"nextBillingDate":        "2099-02-01",
+		"repeatReminderEnabled":  true,
+		"repeatReminderInterval": "1h",
+		"repeatReminderWindow":   "72h",
+	})
+	assertRepeatDerivedState := func(wantCount, wantSchedules int) {
+		t.Helper()
+		var state struct {
+			Count int `db:"count"`
+		}
+		if err := app.DB().NewQuery(`SELECT repeatReminderCount AS count
+			FROM subscription_scheduler_states WHERE user = {:user}`).Bind(dbx.Params{"user": user.Id}).One(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state.Count != wantCount {
+			t.Fatalf("repeat reminder count = %d, want %d", state.Count, wantCount)
+		}
+		var schedule struct {
+			Count int `db:"count"`
+		}
+		if err := app.DB().NewQuery(`SELECT COUNT(*) AS count FROM subscription_repeat_schedule
+			WHERE user_id = {:user} AND subscription_id = {:subscription}`).Bind(dbx.Params{
+			"user": user.Id, "subscription": subscription.Id,
+		}).One(&schedule); err != nil {
+			t.Fatal(err)
+		}
+		if schedule.Count != wantSchedules {
+			t.Fatalf("repeat schedule count = %d, want %d", schedule.Count, wantSchedules)
+		}
+	}
+
+	assertRepeatDerivedState(1, 1)
+	subscription.Set("status", "cancelled")
+	if err := app.Save(subscription); err != nil {
+		t.Fatal(err)
+	}
+	assertRepeatDerivedState(0, 0)
+	subscription.Set("status", "active")
+	if err := app.Save(subscription); err != nil {
+		t.Fatal(err)
+	}
+	assertRepeatDerivedState(1, 1)
+}
+
 func TestSchedulerRefreshReusesOuterTransaction(t *testing.T) {
 	app := newSchemaTestApp(t)
 	if err := ensureSchema(app); err != nil {
@@ -264,20 +317,19 @@ func TestNotificationDueUserIDsCanPagePastRetainedDueUsers(t *testing.T) {
 	createDueSchedulerState(t, app, secondUser.Id, "2026-01-01T00:00:00Z")
 
 	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	firstPage, err := listNotificationDueUserIDsExcluding(app, now, 1, nil)
+	firstPage, err := listNotificationDueUserIDs(app, now, 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(firstPage) != 1 {
 		t.Fatalf("expected first page to contain one due user, got %#v", firstPage)
 	}
-	seen := map[string]struct{}{firstPage[0]: {}}
-	secondPage, err := listNotificationDueUserIDsExcluding(app, now, 1, seen)
+	secondPage, err := listNotificationDueUserIDs(app, now, 1, firstPage[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(secondPage) != 1 || secondPage[0] == firstPage[0] {
-		t.Fatalf("expected query-level exclude to page past retained due user, first=%#v second=%#v", firstPage, secondPage)
+		t.Fatalf("expected stable cursor to page past retained due user, first=%#v second=%#v", firstPage, secondPage)
 	}
 }
 

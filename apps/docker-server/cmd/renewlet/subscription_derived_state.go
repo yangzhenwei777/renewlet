@@ -327,7 +327,7 @@ func rebuildSubscriptionDerivedStateForUser(app core.App, userID string, now tim
 			if record.GetBool("autoRenew") {
 				stats.AutoRenewCount++
 			}
-			if record.GetBool("repeatReminderEnabled") {
+			if record.GetBool("repeatReminderEnabled") && record.GetString("status") != "cancelled" {
 				stats.RepeatReminderCount++
 			}
 			if err := upsertSubscriptionListProjection(app, record); err != nil {
@@ -517,7 +517,7 @@ func replaceSubscriptionRepeatSchedule(app core.App, record *core.Record, settin
 			Bind(dbx.Params{"user": userID, "id": record.Id}).Execute()
 		return err
 	}
-	nextDue := nextRepeatNotificationDueAt(now, settings, []notificationSubscription{notificationSubscriptionFromRecord(record)})
+	nextDue := nextRepeatNotificationDueAt(now, settings, []notificationSubscription{notificationSubscriptionFromRecord(record)}, false)
 	if nextDue == "" {
 		_, err := app.DB().NewQuery("DELETE FROM subscription_repeat_schedule WHERE user_id = {:user} AND subscription_id = {:id}").
 			Bind(dbx.Params{"user": userID, "id": record.Id}).Execute()
@@ -536,8 +536,9 @@ func replaceNotificationSubscriptionRepeatSchedule(
 	subscription notificationSubscription,
 	settings appSettings,
 	now time.Time,
+	skipCurrentWindow bool,
 ) error {
-	nextDue := nextRepeatNotificationDueAt(now, settings, []notificationSubscription{subscription})
+	nextDue := nextRepeatNotificationDueAt(now, settings, []notificationSubscription{subscription}, skipCurrentWindow)
 	if nextDue == "" {
 		_, err := app.DB().NewQuery("DELETE FROM subscription_repeat_schedule WHERE user_id = {:user} AND subscription_id = {:id}").
 			Bind(dbx.Params{"user": userID, "id": subscription.ID}).Execute()

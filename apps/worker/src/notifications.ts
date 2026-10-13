@@ -29,7 +29,7 @@ import {
 } from "./db";
 import { renewAutoSubscriptionsForUserWithSettings } from "./subscription-renewal";
 import { refreshCostSharingCollectionReminderMirrors } from "./subscriptions";
-import { advanceSubscriptionSchedulerDueState, getSubscriptionSchedulerState, listNotificationDueUsers } from "./subscription-scheduler-state";
+import { advanceSubscriptionSchedulerDueState, getSubscriptionSchedulerState } from "./subscription-scheduler-state";
 import { HttpError, ok, readOptionalJson, readJson, requestLocale, successJson, type AppLocale } from "./http";
 import { accountContentLocale, serverFormat, serverText } from "./server-i18n";
 import { requireAuth } from "./auth";
@@ -37,24 +37,12 @@ import { notificationChannelErrorDetails } from "./notification-errors";
 import { sendChannel, sendChannels } from "./notification-channel-send";
 import type { Env, NotificationJobRow } from "./types";
 import { readNotificationHistoryRows } from "./notification-message-storage";
+import { runCronForUser, type CronRunOutcome } from "./notification-cron";
+import type { CronBudget } from "./cron-budget";
 import {
   NOTIFICATION_CRON_WINDOW_MINUTES,
-  NOTIFICATION_MAX_RETRIES,
-  NOTIFICATION_STALE_SENDING_MINUTES,
-  channelsToSend,
-  createCronJobResult,
-  createNotificationJob,
-  finalizeNotificationJob,
-  getNotificationJob,
-  isNotificationJobTerminal,
-  isSendingJobFresh,
-  lastErrorFromChannels,
-  markNotificationJobSending,
-  mergeChannelResults,
   normalizeNotificationJobResultForHistory,
   publicScheduleOccurrence,
-  readJobChannels,
-  type JobChannels,
   type SendSummary,
 } from "./notification-jobs";
 import {
@@ -70,16 +58,13 @@ import {
   repeatReminderOccurrenceMatches,
   repeatReminderSnapshot,
   scheduleOccurrence,
-  toRfc3339Seconds,
+  isSubscriptionReminderEligible,
   type RepeatReminderSnapshot,
   type ScheduleOccurrence,
 } from "./notification-schedule";
 
-const CRON_USER_PAGE_SIZE = 50;
-const CRON_USER_CONCURRENCY = 5;
 
 type NotificationMessage = NotificationEmailMessage;
-type CronRunOutcome = "settled" | "keep_due";
 
 /** 发送单渠道测试通知；settings 只临时合并，正文跟随请求语言，两者都不改写账号偏好。 */
 export async function notificationTest(request: Request, env: Env): Promise<Response> {
@@ -153,43 +138,7 @@ export async function notificationHistory(request: Request, env: Env): Promise<R
   }));
 }
 
-/** Cloudflare Cron 入口按用户分页并发执行，避免一次 Worker tick 放大 D1 与外部通知 provider 压力。 */
-export async function runScheduledNotifications(env: Env): Promise<void> {
-  const startedAt = performance.now();
-  const now = new Date();
-  const seenUserIds = new Set<string>();
-  let subscriptionCount = 0;
-  let batchCount = 0;
-  try {
-    for (;;) {
-      let users: Array<{ user_id: string }>;
-      try {
-      // failed/fresh sending 会故意留在 due-index 内；查询时排除本 tick 已处理用户，避免第一页失败用户饿住后续 due 用户。
-        users = await listNotificationDueUsers(env, now, CRON_USER_PAGE_SIZE, [...seenUserIds]);
-      } catch (error) {
-        logScheduledNotificationError({ phase: "list_due_users", error });
-        throw scheduledRuntimeError(error);
-      }
-      if (users.length === 0) break;
-      for (const user of users) seenUserIds.add(user.user_id);
-      // Cron 运行在 Worker 平台限额内；分页加固定并发避免一次 tick 把 D1/通知 provider 打满。
-      await runBounded(users, CRON_USER_CONCURRENCY, async (user) => {
-        try {
-          const metrics = await runScheduledForUser(env, user.user_id, now);
-          subscriptionCount += metrics.subscriptions;
-          batchCount += metrics.batches;
-        } catch (error) {
-          logScheduledNotificationError({ phase: "run_user", userId: user.user_id, error });
-        }
-      });
-      if (users.length < CRON_USER_PAGE_SIZE) break;
-    }
-  } finally {
-    logNotificationResources("scheduled", subscriptionCount, batchCount, startedAt);
-  }
-}
-
-function logNotificationResources(operation: "manual" | "overview" | "scheduled", subscriptions: number, batches: number, startedAt: number): void {
+function logNotificationResources(operation: "manual" | "overview", subscriptions: number, batches: number, startedAt: number): void {
   console.info("notification_resources", {
     event: "notification_resources",
     operation,
@@ -199,55 +148,13 @@ function logNotificationResources(operation: "manual" | "overview" | "scheduled"
   });
 }
 
-function logScheduledNotificationError(context: { phase: "list_due_users" | "run_user"; offset?: number; userId?: string; error: unknown }): void {
-  console.error("scheduled_notifications_failed", {
-    event: "scheduled_notifications_failed",
-    phase: context.phase,
-    ...(context.offset === undefined ? {} : { offset: context.offset }),
-    ...(context.userId ? { userId: context.userId } : {}),
-    error: safeScheduledError(context.error),
-  });
-}
-
-function scheduledRuntimeError(error: unknown): Error {
-  const safe = safeScheduledError(error);
-  // 平台会记录 rejected scheduled handler；抛出前复用脱敏口径，避免 provider token 进入 Cron 事件日志。
-  return new Error(safe.message);
-}
-
-function safeScheduledError(error: unknown): { name: string; message: string } {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    name: error instanceof Error ? error.name || "Error" : typeof error,
-    message: redactScheduledError(message).slice(0, 300),
-  };
-}
-
-function redactScheduledError(message: string): string {
-  // scheduled 日志覆盖 D1/通知异常，必须先粗粒度遮掉常见渠道密钥和 bearer，避免本地排查把 secret 打进终端。
-  return message
-    .replace(/sctp\d+t[A-Za-z0-9_-]+/g, "[redacted]")
-    .replace(/SCT[A-Za-z0-9_-]+/g, "[redacted]")
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]");
-}
-
-/** 简单有界并发执行器；Worker 单次 Cron 不能为每个用户同时打开外部通知请求。 */
-async function runBounded<T>(items: T[], concurrency: number, task: (item: T) => Promise<void>): Promise<void> {
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    for (;;) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const item = items[index];
-      if (item === undefined) return;
-      await task(item);
-    }
-  });
-  await Promise.all(workers);
-}
-
-async function runScheduledForUser(env: Env, userId: string, now = new Date()): Promise<{ subscriptions: number; batches: number }> {
-  const settings = await getSettings(env, userId);
+export async function runScheduledForUser(
+  env: Env,
+  userId: string,
+  now = new Date(),
+  continued?: { settings: ApiAppSettings; leaseNow: Date; budget: CronBudget },
+): Promise<{ subscriptions: number; batches: number; outcome: CronRunOutcome }> {
+  const settings = continued?.settings ?? await getSettings(env, userId);
   // Cron 没有设备/请求上下文；明确账号偏好生效，auto 固定按英文生成正文和历史 locale。
   const locale = accountContentLocale(settings.localePreference);
   let repeatCandidatesForRefresh: ApiSubscription[] | undefined;
@@ -264,18 +171,20 @@ async function runScheduledForUser(env: Env, userId: string, now = new Date()): 
   }
   if (!decision.due) {
     await advanceSubscriptionSchedulerDueState(env, userId, now, false, repeatCandidatesForRefresh);
-    return { subscriptions: 0, batches: 0 };
+    return { subscriptions: 0, batches: 0, outcome: "settled" };
   }
   const occurrence = publicScheduleOccurrence(decision);
   // due 确认后才推进续订并读取 payload 候选，保持自动续订先于通知内容且不污染非 due 分钟。
-  await renewAutoSubscriptionsForUserWithSettings(env, userId, settings, now);
-  const subscriptions = (await listNotificationScheduleCandidateSubscriptions(env, userId, {
-    scheduledLocalDate: occurrence.scheduledLocalDate,
-    includeExpired: true,
-    showExpired: settings.showExpired,
-  })).map(toApiSubscription);
-  // Cron 没有 request origin；邮件 CTA 只在手动请求能确定公开域名时生成。
-  const outcome = await runCronForUser(env, userId, settings, subscriptions, occurrence, now, locale);
+  if (!continued) await renewAutoSubscriptionsForUserWithSettings(env, userId, settings, now);
+  let subscriptionCount = 0;
+  // 续接直接读取冻结正文；只在新一轮开始时查询候选，避免每个渠道重复扫描千条订阅。
+  const outcome = await runCronForUser(env, userId, settings, occurrence, continued?.leaseNow ?? now, locale, async () => {
+    const subscriptions = (await listNotificationScheduleCandidateSubscriptions(env, userId, {
+      scheduledLocalDate: occurrence.scheduledLocalDate, includeExpired: true, showExpired: settings.showExpired,
+    })).map(toApiSubscription);
+    subscriptionCount = subscriptions.length;
+    return buildDueMessageForSchedule(occurrence, continued?.leaseNow ?? now, settings, subscriptions, true, locale);
+  }, continued?.budget);
   if (outcome === "settled") {
     // failed/fresh sending 需要继续留在 due-index 内重试；只有 sent/skipped/终止状态才推进到下一次提醒。
     await refreshCostSharingCollectionReminderMirrors(env, userId, settings, addDays(occurrence.scheduledLocalDate, 1));
@@ -286,7 +195,7 @@ async function runScheduledForUser(env: Env, userId: string, now = new Date()): 
     )).map(toApiSubscription);
     await advanceSubscriptionSchedulerDueState(env, userId, now, true, repeatCandidates);
   }
-  return { subscriptions: subscriptions.length, batches: 1 };
+  return { subscriptions: subscriptionCount, batches: 1, outcome };
 }
 
 async function runManualForUser(
@@ -311,98 +220,6 @@ async function runManualForUser(
   }
   const summary = await sendChannels(env, settings.enabledChannels, settings, message, locale, options.appUrl);
   return { sent: true, summary, subscriptionCount: subscriptions.length };
-}
-
-async function runCronForUser(
-  env: Env,
-  userId: string,
-  settings: ApiAppSettings,
-  subscriptions: ApiSubscription[],
-  schedule: ScheduleOccurrence,
-  now: Date,
-  locale: AppLocale,
-): Promise<CronRunOutcome> {
-  const existingJob = await getNotificationJob(env, userId, schedule);
-  // sent/skipped 是终态；Cron 重试只允许接管 failed 或 stale sending，避免重复推送已解释过的窗口。
-  if (isNotificationJobTerminal(existingJob)) return "settled";
-  if (existingJob && isSendingJobFresh(existingJob, now, NOTIFICATION_STALE_SENDING_MINUTES)) return "keep_due";
-  if (existingJob?.status === "failed" && existingJob.attempts >= NOTIFICATION_MAX_RETRIES) return "settled";
-
-  const message = buildDueMessageForSchedule(schedule, now, settings, subscriptions, true, locale);
-  const previousChannels = existingJob?.status === "failed" ? readJobChannels(existingJob) : emptyJobChannels();
-  const retryChannels = channelsToSend(existingJob, previousChannels, settings.enabledChannels);
-  const finalReason = settings.enabledChannels.length === 0
-    ? "no_enabled_channels"
-    : !message.hasPayload
-      ? "no_due_items"
-      : "";
-  const noRetryableChannels = existingJob?.status === "failed" && retryChannels.length === 0;
-
-  if (finalReason) {
-    // 空内容/无渠道也写 skipped，历史页才能区分“Cron 已正常检查”和“Cron 没跑到”。
-    const attempts = Math.max(1, existingJob?.attempts ?? 1);
-    const result = createCronJobResult({
-      reason: finalReason,
-      force: false,
-      windowMinutes: NOTIFICATION_CRON_WINDOW_MINUTES,
-      triggeredAtUtc: toRfc3339Seconds(now),
-      schedule,
-      settings,
-      locale,
-      message,
-      channels: emptyJobChannels(),
-    });
-    await finalizeNotificationJob(env, existingJob, userId, schedule, "skipped", attempts, null, result);
-    return "settled";
-  }
-
-  if (noRetryableChannels) {
-    // 用户禁用了所有失败渠道后，不再保留永久 failed；历史成功渠道仍保留在 result 里。
-    const channels = mergeChannelResults(previousChannels, emptyJobChannels(), settings.enabledChannels);
-    const result = createCronJobResult({
-      reason: null,
-      force: false,
-      windowMinutes: NOTIFICATION_CRON_WINDOW_MINUTES,
-      triggeredAtUtc: toRfc3339Seconds(now),
-      schedule,
-      settings,
-      locale,
-      message,
-      channels,
-    });
-    await finalizeNotificationJob(env, existingJob, userId, schedule, "sent", existingJob?.attempts ?? 0, null, result);
-    return "settled";
-  }
-
-  let activeJob = existingJob;
-  if (!activeJob) {
-    // 新窗口先抢占 sending，再做外部发送；唯一键冲突说明另一轮 Cron 已接管。
-    const created = await createNotificationJob(env, userId, schedule, "sending", 1);
-    if (!created.created) return "keep_due";
-    activeJob = created.row;
-  } else {
-    activeJob = await markNotificationJobSending(env, activeJob, activeJob.attempts + 1);
-  }
-  if (!activeJob) return "keep_due";
-
-  const summary = await sendChannels(env, retryChannels, settings, message, locale);
-  const channels = mergeChannelResults(previousChannels, summary, settings.enabledChannels);
-  // 任一渠道失败都保持 failed，下一轮只重试失败渠道；部分成功不能把 job 提前标 sent。
-  const status = channels.failed.length > 0 ? "failed" : "sent";
-  const reason = status === "failed" ? "some_channels_failed" : null;
-  const result = createCronJobResult({
-    reason,
-    force: false,
-    windowMinutes: NOTIFICATION_CRON_WINDOW_MINUTES,
-    triggeredAtUtc: toRfc3339Seconds(now),
-    schedule,
-    settings,
-    locale,
-    message,
-    channels,
-  });
-  await finalizeNotificationJob(env, activeJob, userId, schedule, status, activeJob.attempts, lastErrorFromChannels(channels), result);
-  return status === "failed" ? "keep_due" : "settled";
 }
 
 type SettingsPatch = z.infer<typeof settingsUpdateBodySchema>;
@@ -545,7 +362,7 @@ function collectItems(localDate: string, settings: ApiAppSettings, subscriptions
     const daysUntilNext = daysBetween(localDate, sub.nextBillingDate);
     const buyout = isOneTimeBuyout(sub);
     const reminderDays = effectiveReminderDays(sub.reminderDays, settings.notificationReminderDays);
-    if (!isDisabledReminderDays(sub.reminderDays) && reminderDays !== undefined && !buyout) {
+    if (isSubscriptionReminderEligible(sub) && !isDisabledReminderDays(sub.reminderDays) && reminderDays !== undefined && !buyout) {
       if (sub.billingCycle === "one-time") {
         if (daysUntilNext === reminderDays) items.push(item("expiry", sub, sub.nextBillingDate, daysUntilNext, reminderDays));
         if (daysUntilNext < 0 && settings.showExpired && options.includeExpired) items.push(item("expired", sub, sub.nextBillingDate, daysUntilNext, reminderDays));
@@ -622,7 +439,7 @@ function collectRepeatItems(schedule: ScheduleOccurrence, settings: ApiAppSettin
   const items: NotificationEmailItem[] = [];
   for (const sub of subscriptions) {
     // one-time 固定服务期只发首轮到期提醒；repeat 留给周期订阅和 trial，避免买断项反复打扰。
-    if (isDisabledReminderDays(sub.reminderDays) || sub.billingCycle === "one-time" || !sub.repeatReminderEnabled) continue;
+    if (!isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.reminderDays) || sub.billingCycle === "one-time" || !sub.repeatReminderEnabled) continue;
     const reminderDays = effectiveReminderDays(sub.reminderDays, settings.notificationReminderDays);
     if (reminderDays === undefined) continue;
     const repeat = repeatReminderSnapshot(sub);
@@ -640,7 +457,7 @@ function collectUpcomingRepeatBatches(now: Date, settings: ApiAppSettings, subsc
   const end = now.getTime() + Math.max(1, days) * 86_400_000;
   const batchesByKey = new Map<string, ScheduleOccurrence & { items: NotificationEmailItem[] }>();
   for (const sub of subscriptions) {
-    if (isDisabledReminderDays(sub.reminderDays) || sub.billingCycle === "one-time" || !sub.repeatReminderEnabled) continue;
+    if (!isSubscriptionReminderEligible(sub) || isDisabledReminderDays(sub.reminderDays) || sub.billingCycle === "one-time" || !sub.repeatReminderEnabled) continue;
     const reminderDays = effectiveReminderDays(sub.reminderDays, settings.notificationReminderDays);
     if (reminderDays === undefined) continue;
     const repeat = repeatReminderSnapshot(sub);
@@ -716,10 +533,6 @@ function item(
     ...(repeatReminder ? { repeatReminder } : {}),
     ...(costSharing ? { costSharing } : {}),
   };
-}
-
-function emptyJobChannels(): JobChannels {
-  return { attempted: [], succeeded: [], failed: [] };
 }
 
 function toHistoryJob(row: NotificationJobRow) {

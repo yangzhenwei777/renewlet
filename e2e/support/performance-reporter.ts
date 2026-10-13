@@ -2,7 +2,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { FullConfig, FullResult, Reporter, TestCase, TestResult } from "@playwright/test/reporter";
 import {
-  buildArtifactHash, performanceEnvironmentSchema, performanceSampleSchema, summarizeReport, worktreeHash,
+  buildArtifactHash, labVitalsSampleSchema, performanceBuildSchema, performanceEnvironmentSchema,
+  performanceSampleSchema, summarizeLabVitals, summarizeReport, worktreeHash,
   type PerformanceReport,
 } from "../../scripts/browser-performance";
 import { serverDiagnosticFailures } from "../../scripts/server-diagnostics";
@@ -18,11 +19,13 @@ export default class PerformanceReporter implements Reporter {
     this.root = resolve(config.rootDir, "..");
     const environment = performanceEnvironmentSchema.parse(config.metadata["performance"]);
     this.report = {
-      version: 6, environment, artifactHash: "",
-      status: "running", samples: [], failures: [],
+      version: 7, environment, artifactHash: "",
+      status: "running", samples: [], failures: [], labVitals: [], build: null,
     };
     try {
       this.report.artifactHash = buildArtifactHash(resolve(this.root, "apps/web/dist"));
+      this.report.build = performanceBuildSchema.parse(JSON.parse(readFileSync(resolve(this.root, "tmp/performance-build.json"), "utf8")));
+      if (this.report.build.artifactHash !== this.report.artifactHash) this.report.failures.push("Performance build artifact changed");
       if (worktreeHash(this.root) !== environment.worktreeHash) this.report.failures.push("Sources changed during production build");
     } catch (error) {
       this.report.failures.push(error instanceof Error ? error.message : String(error));
@@ -40,17 +43,17 @@ export default class PerformanceReporter implements Reporter {
 
   onTestEnd(test: TestCase, result: TestResult) {
     if (!this.report) throw new Error("Missing performance report");
-    for (const attachment of result.attachments.filter((item) => item.name === "performance-network" || item.name === "performance-http-cache")) {
-      const body = attachment.body ?? (attachment.path ? readFileSync(attachment.path) : undefined);
-      if (body) this.diagnostics.push({ test: test.titlePath().join(" / "), iteration: test.repeatEachIndex, attachment: attachment.name, body: JSON.parse(body.toString()) });
-    }
-    for (const attachment of result.attachments.filter((item) => item.name === "performance-sample")) {
+    const attachmentNames = ["performance-sample", "lab-vitals-sample", "performance-network", "performance-http-cache", "lab-vitals-http-cache"];
+    for (const attachment of result.attachments.filter((item) => attachmentNames.includes(item.name))) {
       try {
         const body = attachment.body ?? (attachment.path ? readFileSync(attachment.path) : undefined);
         if (!body) throw new Error("Missing performance attachment body");
-        this.report.samples.push(performanceSampleSchema.parse(JSON.parse(body.toString())));
+        const value: unknown = JSON.parse(body.toString());
+        if (attachment.name === "performance-sample") this.report.samples.push(performanceSampleSchema.parse(value));
+        else if (attachment.name === "lab-vitals-sample") this.report.labVitals.push(labVitalsSampleSchema.parse(value));
+        else this.diagnostics.push({ test: test.titlePath().join(" / "), iteration: test.repeatEachIndex, attachment: attachment.name, body: value });
       } catch (error) {
-        this.report.failures.push(`${test.title}: ${error instanceof Error ? error.message : String(error)}`);
+        this.report.failures.push(`${test.title} (${attachment.name}): ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (result.status !== "passed") {
@@ -67,16 +70,18 @@ export default class PerformanceReporter implements Reporter {
       ...serverDiagnosticFailures(this.stderrChunks.join("")),
     );
     let summaries: ReturnType<typeof summarizeReport> | undefined;
+    let labVitalsSummaries: ReturnType<typeof summarizeLabVitals> | undefined;
     try {
       if (worktreeHash(this.root) !== this.report.environment.worktreeHash) this.report.failures.push("Sources changed during measurement");
       summaries = summarizeReport(this.report);
+      labVitalsSummaries = summarizeLabVitals(this.report);
     } catch (error) {
       this.report.failures.push(error instanceof Error ? error.message : String(error));
     }
     if (this.report.failures.length > 0) this.report.status = "failed";
     const directory = resolve(this.root, "test-results");
     mkdirSync(directory, { recursive: true });
-    writeFileSync(resolve(directory, "performance-summary.json"), JSON.stringify({ ...this.report, summaries }, null, 2));
+    writeFileSync(resolve(directory, "performance-summary.json"), JSON.stringify({ ...this.report, summaries, labVitalsSummaries }, null, 2));
     writeFileSync(resolve(directory, "performance-diagnostics.json"), JSON.stringify(this.diagnostics, null, 2));
     console.log(`Production performance: ${this.report.status}; report: test-results/performance-summary.json`);
     return { status: this.report.status === "passed" ? "passed" : "failed" };

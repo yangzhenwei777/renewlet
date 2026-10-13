@@ -183,7 +183,7 @@ describe("SettingsScreen section navigation", () => {
     const accessSecurityLink = within(nav).getByRole("link", { name: "访问安全" });
     await user.click(accessSecurityLink);
 
-    expect(window.location.hash).toBe("#settings-access-security");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("#settings-access-security");
     expect(accessSecurityLink).toHaveAttribute("aria-current", "location");
   });
 
@@ -202,7 +202,7 @@ describe("SettingsScreen section navigation", () => {
     renderSettingsScreen();
 
     const desktopNav = screen.getByTestId("settings-section-nav-desktop");
-    expect(window.location.hash).toBe("");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("");
 
     let root = setSectionAnchorGeometry("settings-timezone");
     dispatchRootScroll(root);
@@ -210,7 +210,7 @@ describe("SettingsScreen section navigation", () => {
     await waitFor(() => {
       expect(within(desktopNav).getByRole("link", { name: "时区" })).toHaveAttribute("aria-current", "location");
     });
-    expect(window.location.hash).toBe("");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("");
 
     root = setSectionAnchorGeometry("settings-notifications");
     dispatchRootScroll(root);
@@ -218,7 +218,7 @@ describe("SettingsScreen section navigation", () => {
     await waitFor(() => {
       expect(within(desktopNav).getByRole("link", { name: "通知" })).toHaveAttribute("aria-current", "location");
     });
-    expect(window.location.hash).toBe("");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("");
   });
 
   it("moves from exchange to calendar feed on root scroll without observer threshold changes", async () => {
@@ -298,7 +298,7 @@ describe("SettingsScreen section navigation", () => {
     });
   });
 
-  it("releases menu scroll intent on scrollend", async () => {
+  it("keeps menu scroll intent through scrollend until user input", async () => {
     const user = userEvent.setup();
     renderSettingsScreen();
 
@@ -308,6 +308,8 @@ describe("SettingsScreen section navigation", () => {
 
     setSectionAnchorGeometry("settings-timezone");
     root.dispatchEvent(new Event("scrollend"));
+    expect(within(desktopNav).getByRole("link", { name: "通知" })).toHaveAttribute("aria-current", "location");
+    root.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
     dispatchRootScroll(root);
 
     await waitFor(() => {
@@ -367,7 +369,7 @@ describe("SettingsScreen section navigation", () => {
     root.dispatchEvent(new Event("scrollend"));
 
     await waitFor(() => expect(screen.queryByTestId("settings-section-nav-drawer")).not.toBeInTheDocument());
-    expect(window.location.hash).toBe("#settings-notifications");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("#settings-notifications");
     expect(trigger).toHaveFocus();
 
     await user.click(trigger);
@@ -392,7 +394,7 @@ describe("SettingsScreen section navigation", () => {
     await user.click(within(nav).getByRole("link", { name: "通知" }));
 
     expect(confirmSpy).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe("#settings-notifications");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("#settings-notifications");
     confirmSpy.mockRestore();
   });
 

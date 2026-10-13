@@ -107,6 +107,8 @@ function createConfig(overrides: {
   provider?: CloudBackupConfig["provider"];
   webdavPolicy?: CloudBackupPolicy;
   s3Policy?: CloudBackupPolicy;
+  s3Prefix?: string;
+  s3AddressingStyle?: "auto" | "pathStyle" | "virtualHost";
   updatedAt?: string | null;
 } = {}): CloudBackupConfig {
   const provider = overrides.provider ?? "webdav";
@@ -121,7 +123,8 @@ function createConfig(overrides: {
       endpoint: "https://account.r2.cloudflarestorage.com",
       region: "auto",
       bucket: "renewlet",
-      prefix: "renewlet",
+      prefix: overrides.s3Prefix ?? "renewlet",
+      addressingStyle: overrides.s3AddressingStyle ?? "auto",
       accessKeyId: "access",
     },
     credentialSet: true,
@@ -164,10 +167,13 @@ describe("useCloudBackupController provider drafts", () => {
     mocks.refetchSnapshots.mockReset();
     mocks.updateConfigMutateAsync.mockImplementation(async (payload: CloudBackupConfigUpdate) => {
       const current = mocks.config ?? createConfig();
+      const s3AddressingStyle = payload.provider === "s3" ? payload.s3?.addressingStyle : current.s3?.addressingStyle;
       const next = createConfig({
         provider: payload.provider,
         webdavPolicy: payload.provider === "webdav" ? payload.policy : current.policyByProvider.webdav,
         s3Policy: payload.provider === "s3" ? payload.policy : current.policyByProvider.s3,
+        s3Prefix: payload.provider === "s3" ? payload.s3?.prefix ?? "renewlet" : current.s3?.prefix ?? "renewlet",
+        ...(s3AddressingStyle ? { s3AddressingStyle } : {}),
         updatedAt: "2026-06-09T00:10:00.000Z",
       });
       mocks.config = next;
@@ -273,9 +279,39 @@ describe("useCloudBackupController provider drafts", () => {
     const s3Payload = mocks.updateConfigMutateAsync.mock.calls[1]?.[0] as CloudBackupConfigUpdate;
     expect(s3Payload.provider).toBe("s3");
     expect(s3Payload.policy.retention).toBe(21);
-    expect(s3Payload.s3).not.toHaveProperty("addressingStyle");
+    expect(s3Payload.s3?.addressingStyle).toBe("auto");
     expect(s3Payload.credentials).toEqual({ s3SecretAccessKey: "s3-secret" });
     expect(s3Payload.webdav).toBeUndefined();
+  });
+
+  it("keeps an explicitly empty S3 prefix through draft sync and save", async () => {
+    mocks.config = createConfig({ provider: "s3", s3Prefix: "" });
+    const { result } = await renderController();
+
+    expect(result.current.form.s3Prefix).toBe("");
+    await act(async () => {
+      await result.current.saveConfig();
+    });
+
+    const payload = mocks.updateConfigMutateAsync.mock.calls[0]?.[0] as CloudBackupConfigUpdate;
+    expect(payload.s3?.prefix).toBe("");
+    expect(result.current.form.s3Prefix).toBe("");
+  });
+
+  it("keeps the selected S3 addressing style in the provider draft and payload", async () => {
+    mocks.config = createConfig({ provider: "s3" });
+    const { result } = await renderController();
+
+    act(() => {
+      result.current.updateForm("s3AddressingStyle", "pathStyle");
+    });
+    await act(async () => {
+      await result.current.saveConfig();
+    });
+
+    const payload = mocks.updateConfigMutateAsync.mock.calls[0]?.[0] as CloudBackupConfigUpdate;
+    expect(payload.s3?.addressingStyle).toBe("pathStyle");
+    expect(result.current.form.s3AddressingStyle).toBe("pathStyle");
   });
 
   it("blocks S3 save and test when signing region is empty", async () => {
@@ -395,13 +431,17 @@ describe("useCloudBackupController provider drafts", () => {
 
     expect(result.current.restoringSnapshotKey).toBe("s3:failed-restore-id");
 
-    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_GET_FAILED\",\"message\":\"云端快照恢复失败\",\"details\":{\"rawResponseText\":\"<Error><Code>AccessDenied</Code></Error>\"}}}";
+    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_GET_FAILED\",\"message\":\"云端快照恢复失败\",\"details\":{\"provider\":\"s3\",\"operation\":\"GetObject\",\"target\":\"bucket=renewlet; key=failed.zip\",\"providerCode\":\"AccessDenied\",\"providerMessage\":\"<Error><Code>AccessDenied</Code></Error>\"}}}";
     await act(async () => {
       rejectDownload(new ApiError(
         "云端快照恢复失败",
         400,
         {
-          rawResponseText: "<Error><Code>AccessDenied</Code></Error>",
+          provider: "s3",
+          operation: "GetObject",
+          target: "bucket=renewlet; key=failed.zip",
+          providerCode: "AccessDenied",
+          providerMessage: "<Error><Code>AccessDenied</Code></Error>",
         },
         "CLOUD_BACKUP_S3_GET_FAILED",
         rawResponse,
@@ -415,6 +455,7 @@ describe("useCloudBackupController provider drafts", () => {
       message: "云端快照恢复失败",
       responseText: "<Error><Code>AccessDenied</Code></Error>",
     });
+    expect(result.current.cloudBackupErrorDetailsContext).toEqual({ scope: "action", action: "restore", provider: "s3" });
   });
 
   it("exposes the snapshot being deleted while delete is pending and clears it on success", async () => {
@@ -470,13 +511,17 @@ describe("useCloudBackupController provider drafts", () => {
 
     expect(result.current.deletingSnapshotKey).toBe("s3:failed-delete-id");
 
-    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_DELETE_FAILED\",\"message\":\"云端快照删除失败\",\"details\":{\"rawResponseText\":\"<Error><Code>AccessDenied</Code></Error>\"}}}";
+    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_DELETE_FAILED\",\"message\":\"云端快照删除失败\",\"details\":{\"provider\":\"s3\",\"operation\":\"DeleteObject\",\"target\":\"bucket=renewlet; key=failed.zip\",\"providerCode\":\"AccessDenied\",\"providerMessage\":\"<Error><Code>AccessDenied</Code></Error>\"}}}";
     await act(async () => {
       rejectDelete(new ApiError(
         "云端快照删除失败",
         400,
         {
-          rawResponseText: "<Error><Code>AccessDenied</Code></Error>",
+          provider: "s3",
+          operation: "DeleteObject",
+          target: "bucket=renewlet; key=failed.zip",
+          providerCode: "AccessDenied",
+          providerMessage: "<Error><Code>AccessDenied</Code></Error>",
         },
         "CLOUD_BACKUP_S3_DELETE_FAILED",
         rawResponse,
@@ -490,18 +535,22 @@ describe("useCloudBackupController provider drafts", () => {
       message: "云端快照删除失败",
       responseText: "<Error><Code>AccessDenied</Code></Error>",
     });
+    expect(result.current.cloudBackupErrorDetailsContext).toEqual({ scope: "action", action: "delete", provider: "s3" });
   });
 
   it("opens upstream details for local SDK cloud backup test errors", async () => {
     const { result } = await renderController();
-    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_TEST_FAILED\",\"message\":\"云备份连接测试失败\",\"details\":{\"rawResponseText\":\"Value out of range. Must be between -2147483648 and 2147483647 (inclusive).\"}}}";
+    const rawResponse = "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_LIST_FAILED\",\"message\":\"云备份连接测试失败\",\"details\":{\"provider\":\"s3\",\"operation\":\"ListObjectsV2\",\"target\":\"host=storage.example.com; bucket=renewlet; key=(bucket root)\",\"clientMessage\":\"Value out of range. Must be between -2147483648 and 2147483647 (inclusive).\"}}}";
     mocks.testMutateAsync.mockRejectedValueOnce(new ApiError(
       "云备份连接测试失败",
       400,
       {
-        rawResponseText: "Value out of range. Must be between -2147483648 and 2147483647 (inclusive).",
+        provider: "s3",
+        operation: "ListObjectsV2",
+        target: "host=storage.example.com; bucket=renewlet; key=(bucket root)",
+        clientMessage: "Value out of range. Must be between -2147483648 and 2147483647 (inclusive).",
       },
-      "CLOUD_BACKUP_TEST_FAILED",
+      "CLOUD_BACKUP_S3_LIST_FAILED",
       rawResponse,
     ));
 
@@ -512,6 +561,40 @@ describe("useCloudBackupController provider drafts", () => {
     expect(result.current.cloudBackupErrorDetailsOpen).toBe(true);
     expect(result.current.cloudBackupErrorDetails?.message).toBe("云备份连接测试失败");
     expect(result.current.cloudBackupErrorDetails?.responseText).toBe("Value out of range. Must be between -2147483648 and 2147483647 (inclusive).");
+    expect(result.current.cloudBackupErrorDetailsContext).toEqual({ scope: "action", action: "test", provider: "webdav" });
+
+    await act(async () => {
+      await result.current.testConfig();
+    });
+
+    expect(result.current.cloudBackupErrorDetails).toBeNull();
+    expect(result.current.cloudBackupErrorDetailsContext).toBeNull();
+    expect(result.current.cloudBackupErrorDetailsOpen).toBe(false);
+  });
+
+  it.each(["webdav", "s3"] as const)("keeps %s connection tests independent of backup creation and saved status", async (provider) => {
+    const config = createConfig({ provider });
+    const status = { lastBackupAt: null, lastStatus: "failed", lastError: "CLOUD_BACKUP_S3_PUT_FAILED", updatedAt: null } as const;
+    config.statusByProvider[provider] = status;
+    mocks.config = config;
+    const { result } = await renderController();
+    mocks.testMutateAsync.mockRejectedValueOnce(new Error("Connection refused"));
+
+    await act(async () => {
+      await result.current.testConfig();
+    });
+    expect(result.current.cloudBackupErrorDetailsContext).toEqual({ scope: "action", action: "test", provider });
+
+    await act(async () => {
+      await result.current.testConfig();
+    });
+    expect(result.current.cloudBackupErrorDetailsContext).toBeNull();
+    expect(result.current.cloudBackupErrorDetails).toBeNull();
+    expect(mocks.testMutateAsync).toHaveBeenCalledTimes(2);
+    expect(mocks.testMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ provider }));
+    expect(mocks.updateConfigMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.createSnapshotMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.config.data?.statusByProvider[provider]).toEqual(status);
   });
 
   it("queries snapshots for the active provider only", async () => {
@@ -541,10 +624,13 @@ describe("useCloudBackupController provider drafts", () => {
       "Failed to load cloud backups",
       400,
       {
-        rawResponseText: "internal error",
+        provider: "s3",
+        operation: "ListObjectsV2",
+        target: "bucket=renewlet; key=(bucket root)",
+        providerMessage: "internal error",
       },
-      "CLOUD_BACKUP_LIST_FAILED",
-      "{\"error\":{\"code\":\"CLOUD_BACKUP_LIST_FAILED\",\"message\":\"Failed to load cloud backups\",\"details\":{\"rawResponseText\":\"internal error\"}}}",
+      "CLOUD_BACKUP_S3_LIST_FAILED",
+      "{\"error\":{\"code\":\"CLOUD_BACKUP_S3_LIST_FAILED\",\"message\":\"Failed to load cloud backups\",\"details\":{\"provider\":\"s3\",\"operation\":\"ListObjectsV2\",\"target\":\"bucket=renewlet; key=(bucket root)\",\"providerMessage\":\"internal error\"}}}",
     );
 
     const { result } = await renderController();
@@ -555,5 +641,6 @@ describe("useCloudBackupController provider drafts", () => {
     });
     expect(result.current.cloudBackupErrorDetails?.message).toBe("Failed to load cloud backups");
     expect(result.current.cloudBackupErrorDetails?.responseText).toBe("internal error");
+    expect(result.current.cloudBackupErrorDetailsContext).toEqual({ scope: "snapshots", provider: "webdav" });
   });
 });

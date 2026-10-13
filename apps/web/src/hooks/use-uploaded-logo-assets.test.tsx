@@ -30,19 +30,16 @@ type ApiFetchMock = (
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn<ApiFetchMock>(),
-  getCurrentUserId: vi.fn(() => "user_1"),
+  getProductCurrentUserId: vi.fn(() => "user_1"),
 }));
 
 vi.mock("@/lib/api-client", () => ({
   apiFetch: mocks.apiFetch,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: {
-    lang: "zh-CN",
-    beforeSend: undefined,
-  },
-  getCurrentUserId: mocks.getCurrentUserId,
+vi.mock("@/services/product-session", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/services/product-session")>(),
+  getProductCurrentUserId: mocks.getProductCurrentUserId,
 }));
 
 function listResult(overrides: Partial<AssetsListFixture> = {}): AssetsListFixture {
@@ -81,7 +78,7 @@ function createWrapper(strict = false) {
 describe("useUploadedLogoAssets", () => {
   beforeEach(() => {
     mocks.apiFetch.mockReset();
-    mocks.getCurrentUserId.mockReturnValue("user_1");
+    mocks.getProductCurrentUserId.mockReturnValue("user_1");
   });
 
   it("loads logo assets through the product API list endpoint", async () => {

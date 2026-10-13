@@ -5,6 +5,7 @@
  */
 import type { NotificationEmailMessage } from "@renewlet/shared/email-template";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
+import type { CronBudget } from "./cron-budget";
 import type { AppLocale } from "./http";
 import { firstNonEmptyText, notificationHttpErrorMessage, requiredSetting } from "./notification-channel-utils";
 import { serverText } from "./server-i18n";
@@ -22,14 +23,14 @@ type PushPlusResponse = {
   data?: unknown;
 };
 
-export async function sendPushPlus(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<void> {
+export async function sendPushPlus(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<void> {
   const token = requiredSetting(settings.pushplusToken, serverText(locale, "service.pushplusToken"), locale);
   const response = await sendNotificationJson("https://www.pushplus.plus/send", {
     token,
     title: message.title,
     content: `${message.content}\n\n${message.timestamp}`,
     template: "txt",
-  }, "PushPlus", locale, { secrets: [token] });
+  }, "PushPlus", locale, { secrets: [token], ...(budget ? { budget } : {}) });
   const providerResponse = await upstreamProviderResponseFromFetchResponse(response, { secrets: [token] });
   if (!response.ok) {
     const detail = providerMessageFromResponse(providerResponse) ?? serverText(locale, "service.pushplusResponseInvalid");

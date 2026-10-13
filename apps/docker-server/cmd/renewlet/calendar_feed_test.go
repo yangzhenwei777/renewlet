@@ -576,11 +576,11 @@ func TestCalendarFeedLabelResolverIgnoresEmptyCustomLabels(t *testing.T) {
 		categoryByValue: calendarFeedLabelMap([]customConfigItem{{
 			Value:  "developer_tools",
 			Labels: customConfigLabels{},
-		}}, localeZhCN),
+		}}, localeZhCN, calendarFeedBuiltInCategoryLabelKey),
 		paymentMethodByValue: calendarFeedLabelMap([]customConfigItem{{
 			Value:  "bank_transfer",
 			Labels: customConfigLabels{},
-		}}, localeZhCN),
+		}}, localeZhCN, calendarFeedBuiltInPaymentMethodLabelKey),
 	}
 	if got := resolver.categoryLabel("developer_tools"); got != "开发工具" {
 		t.Fatalf("expected built-in category label, got %q", got)

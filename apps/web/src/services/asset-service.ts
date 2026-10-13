@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/schemas/media";
 import { getApiLocale } from "@/i18n/api-locale";
 import { translate } from "@/i18n/messages";
-import { getCurrentUserId } from "@/lib/pocketbase";
+import { getProductCurrentUserId } from "@/services/product-session";
 
 /**
  * UploadedAsset 是 Logo 选择器可复用的私有资产视图。
@@ -41,7 +41,7 @@ export const assetService = {
    */
   async create(file: Blob, kind: UploadKind, filename: string): Promise<ApiUploadImageResponse> {
     const form = new FormData();
-    const userId = getCurrentUserId();
+    const userId = getProductCurrentUserId();
     if (!userId) throw new Error(translate(getApiLocale(), "auth.loginRequired"));
     form.append("kind", kind);
     form.append("file", file, filename);

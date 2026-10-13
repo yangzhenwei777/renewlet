@@ -317,7 +317,22 @@ describe("Cloudflare AI recognition", () => {
     expect(response.status).toBe(200);
     expect(body.diagnostics.prompt.user.value).toContain("- User locale: en-US");
     expect(body.diagnostics.prompt.user.value).toContain("Generated user-facing metadata must follow User locale");
-    expect(body.diagnostics.prompt.user.value).toContain("use English for en-US and Simplified Chinese for zh-CN");
+    expect(body.diagnostics.prompt.user.value).toContain("use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU");
+    expect(body.diagnostics.prompt.user.value).toContain("Do not translate source=input text, Existing user tags");
+  });
+
+  it("includes Russian language rules in Russian recognition diagnostics", async () => {
+    aiMocks.generateObject.mockResolvedValue({
+      object: { subscriptions: [generatedDraft({ currency: "RUB" })], warnings: [] },
+      finishReason: "stop",
+    });
+
+    const response = await recognizeSubscriptions(requestForText("sample service 15 руб. в месяц", "ru-RU"), envFixture());
+    const body = await readSuccessData<{ diagnostics: { prompt: { user: { value: string } } } }>(response);
+
+    expect(response.status).toBe(200);
+    expect(body.diagnostics.prompt.user.value).toContain("- User locale: ru-RU");
+    expect(body.diagnostics.prompt.user.value).toContain("use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU");
     expect(body.diagnostics.prompt.user.value).toContain("Do not translate source=input text, Existing user tags");
   });
 

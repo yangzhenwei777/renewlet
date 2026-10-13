@@ -8,13 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-// 上游响应测试保护 raw body 回显与脱敏边界，raw response 不能泄露请求侧凭据。
-func TestS3CloudBackupListIncludesRawResponseText(t *testing.T) {
+// 远端响应测试保护结构化阶段、状态、能力提示与脱敏边界。
+func TestS3CloudBackupListIncludesStructuredDetails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got == "" {
 			t.Fatalf("signed request missing Authorization header")
@@ -32,7 +33,7 @@ func TestS3CloudBackupListIncludesRawResponseText(t *testing.T) {
 		Endpoint:    server.URL,
 		Region:      "us-east-1",
 		Bucket:      "renewlet",
-		Prefix:      "snapshots",
+		Prefix:      cloudBackupStringPtr("snapshots"),
 		AccessKeyID: "access-key",
 	}, "secret-key")
 
@@ -47,13 +48,22 @@ func TestS3CloudBackupListIncludesRawResponseText(t *testing.T) {
 	if remoteErr.code != "CLOUD_BACKUP_S3_LIST_FAILED" {
 		t.Fatalf("unexpected code: %s", remoteErr.code)
 	}
-	if remoteErr.details == nil || remoteErr.details.RawResponseText == nil {
-		t.Fatalf("missing raw response text: %#v", remoteErr.details)
+	if remoteErr.details == nil || remoteErr.details.ProviderMessage == "" {
+		t.Fatalf("missing provider response: %#v", remoteErr.details)
 	}
-	if !strings.Contains(*remoteErr.details.RawResponseText, "AccessDenied") {
+	if !strings.Contains(remoteErr.details.ProviderMessage, "AccessDenied") {
 		t.Fatalf("missing upstream body: %#v", remoteErr.details)
 	}
-	payload := *remoteErr.details.RawResponseText
+	if remoteErr.details.HTTPStatus == nil || *remoteErr.details.HTTPStatus != http.StatusForbidden || remoteErr.details.HTTPStatusText != "Forbidden" {
+		t.Fatalf("missing HTTP status details: %#v", remoteErr.details)
+	}
+	if remoteErr.details.RequiredCapability != "bucket listing permission" {
+		t.Fatalf("missing list permission hint: %#v", remoteErr.details)
+	}
+	if !strings.Contains(remoteErr.details.Target, "bucket=renewlet") || !strings.Contains(remoteErr.details.Target, "key=snapshots/") {
+		t.Fatalf("missing redacted target: %#v", remoteErr.details)
+	}
+	payload := remoteErr.details.ProviderMessage
 	for _, leaked := range []string{"access-key", "secret-key", "should-not-echo"} {
 		if strings.Contains(payload, leaked) {
 			t.Fatalf("sensitive value %q leaked in raw response: %#v", leaked, remoteErr.details)
@@ -61,26 +71,174 @@ func TestS3CloudBackupListIncludesRawResponseText(t *testing.T) {
 	}
 }
 
+func TestS3CloudBackupListPreservesSDKErrorForSuccessfulResponse(t *testing.T) {
+	transport := cloudBackupRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"application/xml"}},
+			Body:       io.NopCloser(strings.NewReader("not xml")),
+			Request:    request,
+		}, nil
+	})
+	client := newS3CloudBackupClient(cloudBackupS3Settings{
+		Endpoint:    "https://storage.example.com",
+		Region:      "us-east-1",
+		Bucket:      "renewlet",
+		Prefix:      cloudBackupStringPtr("snapshots"),
+		AccessKeyID: "access-key",
+	}, "secret-key")
+	capture := &s3ProviderResponseCapture{}
+	client.capture = capture
+	client.client = newS3SDKClient(client.settings, client.secret, &s3CaptureHTTPClient{
+		client:  &http.Client{Transport: transport},
+		capture: capture,
+		secrets: []string{"access-key", "secret-key"},
+	})
+
+	_, err := client.List(context.Background())
+	if err == nil {
+		t.Fatal("expected SDK deserialization failure")
+	}
+	remoteErr := cloudBackupRemoteErrorFrom(err)
+	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_S3_LIST_FAILED" {
+		t.Fatalf("expected list failure, got %#v", err)
+	}
+	if remoteErr.details == nil || remoteErr.details.ProviderMessage == "" {
+		t.Fatalf("missing successful-response diagnostic: %#v", remoteErr.details)
+	}
+	if remoteErr.details.ProviderMessage != "not xml" || remoteErr.details.ClientMessage == "" {
+		t.Fatalf("expected separate response body and local parser error: %#v", remoteErr.details)
+	}
+	if remoteErr.details.ProviderCode != "" || remoteErr.details.HTTPStatus == nil || *remoteErr.details.HTTPStatus != http.StatusOK {
+		t.Fatalf("local parsing error must not become a provider error code: %#v", remoteErr.details)
+	}
+}
+
+func TestS3CloudBackupUploadCleansZipWhenHeadForbidden(t *testing.T) {
+	var methods []string
+	transport := cloudBackupRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		methods = append(methods, request.Method)
+		if request.Method == http.MethodHead {
+			return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Header: http.Header{}, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+		}
+		status := http.StatusOK
+		if request.Method == http.MethodDelete {
+			status = http.StatusNoContent
+		}
+		return &http.Response{StatusCode: status, Status: http.StatusText(status), Header: http.Header{}, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+	})
+	client := newS3CloudBackupClient(cloudBackupS3Settings{
+		Endpoint:    "https://storage.example.com",
+		Region:      "us-east-1",
+		Bucket:      "renewlet",
+		Prefix:      cloudBackupStringPtr("snapshots"),
+		AccessKeyID: "access-key",
+	}, "secret-key")
+	capture := &s3ProviderResponseCapture{}
+	client.capture = capture
+	client.client = newS3SDKClient(client.settings, client.secret, &s3CaptureHTTPClient{
+		client:  &http.Client{Transport: transport},
+		capture: capture,
+		secrets: []string{"access-key", "secret-key"},
+	})
+	content := []byte("renewlet")
+	manifest := cloudBackupManifestForTest("renewlet-export-v1-20260609T000000Z-head", content)
+	err := client.Upload(context.Background(), manifest.Filename, cloudBackupSnapshotSourceForTest(t, content), manifest)
+	if err == nil {
+		t.Fatal("expected HeadObject failure")
+	}
+	remoteErr := cloudBackupRemoteErrorFrom(err)
+	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_S3_HEAD_FAILED" {
+		t.Fatalf("expected HeadObject failure, got %#v", err)
+	}
+	if remoteErr.details == nil || remoteErr.details.HTTPStatus == nil || *remoteErr.details.HTTPStatus != http.StatusForbidden || remoteErr.details.RequiredCapability != "object read permission" {
+		t.Fatalf("missing S3 upload diagnostic: %#v", remoteErr.details)
+	}
+	if got, want := methods, []string{http.MethodPut, http.MethodHead, http.MethodDelete}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected failed upload cleanup sequence %v, got %v", want, got)
+	}
+}
+
+func TestS3CloudBackupUploadCleansZipAndManifestWhenManifestFails(t *testing.T) {
+	var methods []string
+	putCount := 0
+	transport := cloudBackupRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		methods = append(methods, request.Method)
+		if request.Method == http.MethodPut {
+			putCount++
+			if putCount == 2 {
+				return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Header: http.Header{}, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+			}
+		}
+		status := http.StatusOK
+		if request.Method == http.MethodHead {
+			status = http.StatusOK
+		}
+		if request.Method == http.MethodDelete {
+			status = http.StatusNoContent
+		}
+		headers := http.Header{}
+		if request.Method == http.MethodHead {
+			headers.Set("Content-Length", "8")
+		}
+		return &http.Response{StatusCode: status, Status: http.StatusText(status), Header: headers, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
+	})
+	client := newS3CloudBackupClient(cloudBackupS3Settings{
+		Endpoint:    "https://storage.example.com",
+		Region:      "us-east-1",
+		Bucket:      "renewlet",
+		Prefix:      cloudBackupStringPtr("snapshots"),
+		AccessKeyID: "access-key",
+	}, "secret-key")
+	capture := &s3ProviderResponseCapture{}
+	client.capture = capture
+	client.client = newS3SDKClient(client.settings, client.secret, &s3CaptureHTTPClient{
+		client:  &http.Client{Transport: transport},
+		capture: capture,
+		secrets: []string{"access-key", "secret-key"},
+	})
+	content := []byte("renewlet")
+	manifest := cloudBackupManifestForTest("renewlet-export-v1-20260609T000000Z-manifest", content)
+	err := client.Upload(context.Background(), manifest.Filename, cloudBackupSnapshotSourceForTest(t, content), manifest)
+	if err == nil {
+		t.Fatal("expected manifest failure")
+	}
+	remoteErr := cloudBackupRemoteErrorFrom(err)
+	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_S3_PUT_FAILED" {
+		t.Fatalf("expected manifest PUT failure, got %#v", err)
+	}
+	if remoteErr.details == nil || !strings.Contains(remoteErr.details.Target, "key=snapshots/"+manifest.ID+".manifest.json") {
+		t.Fatalf("missing manifest diagnostic: %#v", remoteErr.details)
+	}
+	if got, want := methods, []string{http.MethodPut, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodDelete}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected manifest cleanup sequence %v, got %v", want, got)
+	}
+}
+
 func TestS3CloudBackupAddressingStyles(t *testing.T) {
 	tests := []struct {
 		name             string
 		endpoint         string
+		addressingStyle  string
 		expectedHost     string
 		expectedPath     string
 		unexpectedHost   string
 		unexpectedPrefix string
 	}{
 		{
-			name:             "virtual hosted",
+			name:             "SDK auto endpoint",
 			endpoint:         "https://example.com",
+			addressingStyle:  cloudBackupS3AddressingAuto,
 			expectedHost:     "renewlet.example.com",
 			expectedPath:     "/",
 			unexpectedHost:   "example.com",
 			unexpectedPrefix: "/renewlet/",
 		},
 		{
-			name:             "path style for explicit non 443 endpoint",
+			name:             "explicit path style",
 			endpoint:         "https://storage.example.com:9000",
+			addressingStyle:  cloudBackupS3AddressingPathStyle,
 			expectedHost:     "storage.example.com:9000",
 			expectedPath:     "/renewlet",
 			unexpectedHost:   "renewlet.storage.example.com:9000",
@@ -106,11 +264,12 @@ func TestS3CloudBackupAddressingStyles(t *testing.T) {
 				}, nil
 			})
 			client := newS3CloudBackupClient(cloudBackupS3Settings{
-				Endpoint:    tt.endpoint,
-				Region:      "us-east-1",
-				Bucket:      "renewlet",
-				Prefix:      "snapshots",
-				AccessKeyID: "access-key",
+				Endpoint:        tt.endpoint,
+				Region:          "us-east-1",
+				Bucket:          "renewlet",
+				Prefix:          cloudBackupStringPtr("snapshots"),
+				AccessKeyID:     "access-key",
+				AddressingStyle: tt.addressingStyle,
 			}, "secret-key")
 			client.capture = &s3ProviderResponseCapture{}
 			client.client = newS3SDKClient(client.settings, client.secret, &http.Client{Transport: transport})
@@ -134,6 +293,35 @@ func TestS3CloudBackupAddressingStyles(t *testing.T) {
 	}
 }
 
+func TestS3CloudBackupRootPrefixOmitsListPrefixParameter(t *testing.T) {
+	var gotQuery string
+	transport := cloudBackupRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		gotQuery = request.URL.RawQuery
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"application/xml"}},
+			Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><ListBucketResult></ListBucketResult>`)),
+			Request:    request,
+		}, nil
+	})
+	client := newS3CloudBackupClient(cloudBackupS3Settings{
+		Endpoint:    "https://example.com",
+		Region:      "us-east-1",
+		Bucket:      "renewlet",
+		Prefix:      cloudBackupStringPtr(""),
+		AccessKeyID: "access-key",
+	}, "secret-key")
+	client.client = newS3SDKClient(client.settings, client.secret, &http.Client{Transport: transport})
+
+	if _, err := client.List(context.Background()); err != nil {
+		t.Fatalf("expected root list to succeed: %v", err)
+	}
+	if strings.Contains(gotQuery, "prefix=") {
+		t.Fatalf("root list unexpectedly constrained by prefix: %q", gotQuery)
+	}
+}
+
 func TestS3CloudBackupUsesExplicitSigningRegion(t *testing.T) {
 	var gotAuthorization string
 	transport := cloudBackupRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -150,7 +338,7 @@ func TestS3CloudBackupUsesExplicitSigningRegion(t *testing.T) {
 		Endpoint:    "https://example.com",
 		Region:      "auto",
 		Bucket:      "renewlet",
-		Prefix:      "snapshots",
+		Prefix:      cloudBackupStringPtr("snapshots"),
 		AccessKeyID: "access-key",
 	}, "secret-key")
 	client.client = newS3SDKClient(client.settings, client.secret, &http.Client{Transport: transport})
@@ -200,7 +388,7 @@ func TestS3CloudBackupTestIncludesListProbe(t *testing.T) {
 		Endpoint:    "https://example.com",
 		Region:      "us-east-1",
 		Bucket:      "renewlet",
-		Prefix:      "snapshots",
+		Prefix:      cloudBackupStringPtr("snapshots"),
 		AccessKeyID: "access-key",
 	}, "secret-key")
 	capture := &s3ProviderResponseCapture{}
@@ -229,7 +417,9 @@ func TestCloudBackupPersistedErrorMessageRedactsUpstreamBody(t *testing.T) {
 	err := &cloudBackupRemoteError{
 		code: "CLOUD_BACKUP_S3_LIST_FAILED",
 		details: &cloudBackupErrorDetails{
-			RawResponseText: &body,
+			Operation:       "ListObjectsV2",
+			Target:          "bucket=renewlet; key=(bucket root)",
+			ProviderMessage: body,
 		},
 	}
 
@@ -244,10 +434,10 @@ func TestCloudBackupPersistedErrorMessageRedactsUpstreamBody(t *testing.T) {
 }
 
 func TestCloudBackupLocalErrorDetails(t *testing.T) {
-	details := cloudBackupLocalErrorDetails(errors.New("Value out of range. Must be between -2147483648 and 2147483647 (inclusive)."))
+	details := cloudBackupLocalErrorDetails("", "local", "cloud backup", "Value out of range. Must be between -2147483648 and 2147483647 (inclusive).")
 
-	if details.RawResponseText == nil || !strings.Contains(*details.RawResponseText, "Value out of range") {
-		t.Fatalf("missing raw local error: %#v", details)
+	if !strings.Contains(details.ClientMessage, "Value out of range") {
+		t.Fatalf("missing local error: %#v", details)
 	}
 }
 
@@ -259,7 +449,7 @@ func TestS3CloudBackupLocalNetworkErrorUsesRedactedRequestContext(t *testing.T) 
 		Endpoint:    "https://cloud-storage.example.com",
 		Region:      "ap-shanghai",
 		Bucket:      "cloud-storage-1234567890",
-		Prefix:      "snapshots",
+		Prefix:      cloudBackupStringPtr("snapshots"),
 		AccessKeyID: "access-key",
 	}, "secret-key")
 	capture := &s3ProviderResponseCapture{}
@@ -279,14 +469,8 @@ func TestS3CloudBackupLocalNetworkErrorUsesRedactedRequestContext(t *testing.T) 
 		t.Fatalf("expected structured local S3 error, got %#v", err)
 	}
 	details := remoteErr.details
-	if details.RawResponseText == nil || !strings.Contains(*details.RawResponseText, "S3 GET request to https://cloud-storage-1234567890.cloud-storage.example.com/") {
+	if !strings.Contains(details.ClientMessage, "Network connection lost.") || !strings.Contains(details.Target, "host=cloud-storage-1234567890.cloud-storage.example.com") {
 		t.Fatalf("missing S3 request target in local error: %#v", details)
-	}
-	if !strings.Contains(*details.RawResponseText, "failed before response headers: Get ") || !strings.Contains(*details.RawResponseText, "Network connection lost.") {
-		t.Fatalf("missing transport phase in local error: %q", *details.RawResponseText)
-	}
-	if !strings.Contains(*details.RawResponseText, `"authorization":"[redacted]"`) {
-		t.Fatalf("missing redacted S3 authorization header: %q", *details.RawResponseText)
 	}
 	serialized := fmt.Sprintf("%#v", details)
 	for _, leaked := range []string{"access-key", "secret-key", "Authorization", "X-Amz-Signature"} {
@@ -314,20 +498,14 @@ func TestWebDAVCloudBackupLocalNetworkErrorUsesRedactedRequestContext(t *testing
 
 	_, err := client.List(context.Background())
 	remoteErr := cloudBackupRemoteErrorFrom(err)
-	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_WEBDAV_MKCOL_FAILED" || remoteErr.details == nil || remoteErr.details.RawResponseText == nil {
+	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_WEBDAV_MKCOL_FAILED" || remoteErr.details == nil || remoteErr.details.ClientMessage == "" {
 		t.Fatalf("expected structured WebDAV local error, got %#v", err)
 	}
-	raw := *remoteErr.details.RawResponseText
-	for _, want := range []string{
-		"WebDAV MKCOL request to https://webdav.example.com/remote.php/dav/files/alice/renewlet/ failed before response headers",
-		"Network connection lost for https://webdav.example.com/remote.php/dav/files/alice/renewlet/ [redacted]",
-	} {
-		if !strings.Contains(raw, want) {
-			t.Fatalf("expected WebDAV diagnostic to contain %q, got %q", want, raw)
-		}
+	if !strings.Contains(remoteErr.details.ClientMessage, "Network connection lost") || !strings.Contains(remoteErr.details.Target, "host=webdav.example.com") {
+		t.Fatalf("expected WebDAV diagnostic context, got %#v", remoteErr.details)
 	}
-	if strings.Contains(raw, "webdav-secret") {
-		t.Fatalf("WebDAV diagnostic leaked password: %q", raw)
+	if strings.Contains(remoteErr.details.ClientMessage, "webdav-secret") {
+		t.Fatalf("WebDAV diagnostic leaked password: %q", remoteErr.details.ClientMessage)
 	}
 }
 
@@ -369,6 +547,46 @@ func TestWebDAVCloudBackupSDKAdapterRoundTrip(t *testing.T) {
 		if !state.methods[method] {
 			t.Fatalf("expected SDK adapter to issue %s, saw %#v", method, state.methods)
 		}
+	}
+}
+
+func TestWebDAVCloudBackupUploadCleansZipWhenManifestFails(t *testing.T) {
+	state := newFakeWebDAVState()
+	var methods []string
+	putCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodPut {
+			putCount++
+			if putCount == 2 {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+		state.handle(t, w, r)
+	}))
+	defer server.Close()
+	client := newWebDAVCloudBackupClient(cloudBackupWebDAVSettings{
+		URL:      server.URL + "/remote.php/dav/files/alice",
+		Username: "alice",
+		Path:     "renewlet",
+	}, "webdav-secret")
+	content := []byte("renewlet")
+	manifest := cloudBackupManifestForTest("renewlet-export-v1-20260609T000000Z-webdav-failure", content)
+
+	err := client.Upload(context.Background(), manifest.Filename, cloudBackupSnapshotSourceForTest(t, content), manifest)
+	remoteErr := cloudBackupRemoteErrorFrom(err)
+	if remoteErr == nil || remoteErr.code != "CLOUD_BACKUP_WEBDAV_PUT_FAILED" {
+		t.Fatalf("expected manifest PUT failure, got %#v", err)
+	}
+	filtered := []string{}
+	for _, method := range methods {
+		if method == http.MethodPut || method == http.MethodDelete {
+			filtered = append(filtered, method)
+		}
+	}
+	if want := []string{http.MethodPut, http.MethodPut, http.MethodDelete, http.MethodDelete}; !reflect.DeepEqual(filtered, want) {
+		t.Fatalf("expected WebDAV failed upload cleanup sequence %v, got %v", want, filtered)
 	}
 }
 
@@ -436,20 +654,26 @@ func TestWebDAVCloudBackupProviderResponses(t *testing.T) {
 				t.Fatal("expected WebDAV provider error")
 			}
 			remoteErr := cloudBackupRemoteErrorFrom(err)
-			if remoteErr == nil || remoteErr.details == nil || remoteErr.details.RawResponseText == nil {
-				t.Fatalf("expected raw response text, got %#v", err)
+			if remoteErr == nil || remoteErr.details == nil {
+				t.Fatalf("expected structured response, got %#v", err)
 			}
 			if tt.wantBody == "" {
-				if strings.TrimSpace(*remoteErr.details.RawResponseText) != http.StatusText(tt.status) {
-					t.Fatalf("expected status fallback, got %#v", remoteErr.details.RawResponseText)
+				if remoteErr.details.HTTPStatus == nil || *remoteErr.details.HTTPStatus != tt.status || remoteErr.details.HTTPStatusText != http.StatusText(tt.status) {
+					t.Fatalf("expected status fallback, got %#v", remoteErr.details)
+				}
+				if remoteErr.details.RequiredCapability != "object write permission" {
+					t.Fatalf("missing WebDAV capability hint, got %#v", remoteErr.details)
 				}
 				return
 			}
-			if !strings.Contains(*remoteErr.details.RawResponseText, tt.wantBody) {
-				t.Fatalf("expected redacted upstream body %q, got %#v", tt.wantBody, remoteErr.details.RawResponseText)
+			if !strings.Contains(remoteErr.details.ProviderMessage, tt.wantBody) {
+				t.Fatalf("expected redacted upstream body %q, got %#v", tt.wantBody, remoteErr.details)
 			}
-			if strings.Contains(*remoteErr.details.RawResponseText, "webdav-secret") {
-				t.Fatalf("WebDAV password leaked in raw response: %#v", remoteErr.details.RawResponseText)
+			if remoteErr.details.RequiredCapability != "object write permission" {
+				t.Fatalf("missing WebDAV capability hint, got %#v", remoteErr.details)
+			}
+			if strings.Contains(remoteErr.details.ProviderMessage, "webdav-secret") {
+				t.Fatalf("WebDAV password leaked in provider response: %#v", remoteErr.details)
 			}
 		})
 	}
@@ -494,6 +718,12 @@ func (state *fakeWebDAVState) handle(t *testing.T, w http.ResponseWriter, r *htt
 		w.WriteHeader(http.StatusCreated)
 	case "PROPFIND":
 		if !state.directories[target] {
+			if body, ok := state.files[target]; ok {
+				w.Header().Set("Content-Type", "application/xml")
+				w.WriteHeader(207)
+				_, _ = w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">` + fakeWebDAVResponse(target, false, len(body)) + `</d:multistatus>`))
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}

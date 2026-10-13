@@ -7,8 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -91,7 +89,7 @@ func readSubscriptionSchedulerAggregateInput(app core.App, userID string) (subsc
 	var counts subscriptionSchedulerAggregateInput
 	err := app.DB().NewQuery(`SELECT
 		COALESCE(SUM(CASE WHEN autoRenew = 1 THEN 1 ELSE 0 END), 0) AS auto_renew_count,
-		COALESCE(SUM(CASE WHEN repeatReminderEnabled = 1 THEN 1 ELSE 0 END), 0) AS repeat_reminder_count
+		COALESCE(SUM(CASE WHEN repeatReminderEnabled = 1 AND status != 'cancelled' THEN 1 ELSE 0 END), 0) AS repeat_reminder_count
 		FROM subscriptions WHERE user = {:user}`).Bind(dbx.Params{"user": userID}).One(&counts)
 	return counts, err
 }
@@ -166,7 +164,7 @@ func advanceSubscriptionSchedulerDueState(
 		return subscriptionSchedulerState{}, err
 	}
 	for _, candidate := range repeatCandidates {
-		if err := replaceNotificationSubscriptionRepeatSchedule(app, userID, candidate, settings, now); err != nil {
+		if err := replaceNotificationSubscriptionRepeatSchedule(app, userID, candidate, settings, now, skipCurrentNotificationWindow); err != nil {
 			return subscriptionSchedulerState{}, err
 		}
 	}
@@ -240,7 +238,7 @@ func rebuildSubscriptionRepeatScheduleForUser(app core.App, userID string, setti
 		return err
 	}
 	for offset := 0; ; offset += notificationSubscriptionPageSize {
-		records, err := app.FindRecordsByFilter("subscriptions", "user = {:user} && repeatReminderEnabled = true", "id", notificationSubscriptionPageSize, offset, dbx.Params{"user": userID})
+		records, err := app.FindRecordsByFilter("subscriptions", "user = {:user} && status != 'cancelled' && repeatReminderEnabled = true", "id", notificationSubscriptionPageSize, offset, dbx.Params{"user": userID})
 		if err != nil {
 			return err
 		}
@@ -296,35 +294,34 @@ func subscriptionSchedulerStateFromRecord(record *core.Record) subscriptionSched
 }
 
 func listAutoRenewDueUserIDs(app core.App, now time.Time, limit int) ([]string, error) {
-	return listSchedulerDueUserIDs(app, "s.autoRenewCount > 0 AND (s.nextAutoRenewCheckAtUTC = '' OR s.nextAutoRenewCheckAtUTC <= {:now})", now, limit, "s.nextAutoRenewCheckAtUTC ASC, s.user ASC", nil)
+	return listSchedulerDueUserIDs(app, "s.autoRenewCount > 0 AND (s.nextAutoRenewCheckAtUTC = '' OR s.nextAutoRenewCheckAtUTC <= {:now})", now, limit, "s.nextAutoRenewCheckAtUTC ASC, s.user ASC", "")
 }
 
-func listNotificationDueUserIDsExcluding(app core.App, now time.Time, limit int, excludeUserIDs map[string]struct{}) ([]string, error) {
+func listNotificationDueUserIDs(app core.App, now time.Time, limit int, afterUserID string) ([]string, error) {
 	filter := "(s.nextDailyNotificationDueAtUTC = '' OR s.nextDailyNotificationDueAtUTC <= {:now} OR (s.repeatReminderCount > 0 AND (s.nextRepeatNotificationDueAtUTC = '' OR s.nextRepeatNotificationDueAtUTC <= {:now})))"
-	return listSchedulerDueUserIDs(app, filter, now, limit, "s.nextDailyNotificationDueAtUTC ASC, s.nextRepeatNotificationDueAtUTC ASC, s.user ASC", excludeUserIDs)
+	return listSchedulerDueUserIDs(app, filter, now, limit, "u.id ASC", afterUserID)
 }
 
-func listSchedulerDueUserIDs(app core.App, filter string, now time.Time, limit int, sortOrder string, excludeUserIDs map[string]struct{}) ([]string, error) {
+func listSchedulerDueUserIDs(app core.App, filter string, now time.Time, limit int, sortOrder string, afterUserID string) ([]string, error) {
 	if limit <= 0 {
 		limit = subscriptionRenewalMaintenancePageSize
 	}
 	var rows []struct {
 		UserID string `db:"user"`
 	}
-	params := dbx.Params{"now": now.UTC().Format(time.RFC3339), "limit": limit}
-	excludeClause := schedulerExcludeClause(params, excludeUserIDs)
+	params := dbx.Params{"now": now.UTC().Format(time.RFC3339), "limit": limit, "afterUser": afterUserID}
 	demoClause := ""
 	if demoModePolicy.Enabled() {
 		demoClause = " AND lower(u.email) != lower({:demoEmail})"
 		params["demoEmail"] = demoModePolicy.Email
 	}
-	// due-index 枚举走内部 SQL join：banned/demo/本 tick seen 用户在数据库层过滤，避免一页保留 due 的用户饿住后续候选。
+	// 到期时间会被处理改写，分页只能用不变的账号ID；保留due的失败账号也不能占住下一页。
 	err := app.DB().NewQuery(fmt.Sprintf(`SELECT s.user AS user
 		FROM subscription_scheduler_states AS s
 		JOIN users AS u ON u.id = s.user
-		WHERE u.banned = 0%s AND %s%s
+		WHERE u.banned = 0%s AND %s AND u.id > {:afterUser}
 		ORDER BY %s
-		LIMIT {:limit}`, demoClause, filter, excludeClause, sortOrder)).
+		LIMIT {:limit}`, demoClause, filter, sortOrder)).
 		Bind(params).
 		All(&rows)
 	if err != nil {
@@ -339,30 +336,6 @@ func listSchedulerDueUserIDs(app core.App, filter string, now time.Time, limit i
 		userIDs = append(userIDs, userID)
 	}
 	return userIDs, nil
-}
-
-func schedulerExcludeClause(params dbx.Params, excludeUserIDs map[string]struct{}) string {
-	if len(excludeUserIDs) == 0 {
-		return ""
-	}
-	ids := make([]string, 0, len(excludeUserIDs))
-	for id := range excludeUserIDs {
-		if trimmed := strings.TrimSpace(id); trimmed != "" {
-			ids = append(ids, trimmed)
-		}
-	}
-	if len(ids) == 0 {
-		return ""
-	}
-	// exclude 列表来自本 tick 内存状态，也必须走 dbx 占位参数；排序只为让 SQL 和测试输出稳定。
-	sort.Strings(ids)
-	placeholders := make([]string, len(ids))
-	for i, id := range ids {
-		key := fmt.Sprintf("excludeUser%d", i)
-		placeholders[i] = "{:" + key + "}"
-		params[key] = id
-	}
-	return " AND s.user NOT IN (" + strings.Join(placeholders, ", ") + ")"
 }
 
 func schedulerSettingsForUser(app core.App, userID string) appSettings {
@@ -393,22 +366,23 @@ func nextAutoRenewCheckAfterLocalDate(localDate string, timezone string) string 
 }
 
 func nextDailyNotificationDueAt(now time.Time, timezone string, localTime string, skipCurrentWindow bool) string {
+	// 完成后严格越过窗口；不能依赖执行延迟让包含当前时刻的预览函数偶然推进。
 	if skipCurrentWindow {
-		return getNextLocalScheduleOccurrence(now, timezone, localTime).ScheduledInstantUTC
+		return getNextLocalScheduleOccurrence(now, timezone, localTime, false).ScheduledInstantUTC
 	}
 	current := getLocalScheduleDecision(now, timezone, localTime, maxInt(envInt("NOTIFICATION_CRON_WINDOW_MINUTES", 2), 0), false)
 	if current.Due {
 		return current.ScheduledInstantUTC
 	}
-	return getNextLocalScheduleOccurrence(now, timezone, localTime).ScheduledInstantUTC
+	return getNextLocalScheduleOccurrence(now, timezone, localTime, true).ScheduledInstantUTC
 }
 
-func nextRepeatNotificationDueAt(now time.Time, settings appSettings, subscriptions []notificationSubscription) string {
+func nextRepeatNotificationDueAt(now time.Time, settings appSettings, subscriptions []notificationSubscription, skipCurrentWindow bool) string {
 	if len(subscriptions) == 0 {
 		return ""
 	}
 	current := getRepeatScheduleDecision(now, settings, subscriptions, maxInt(envInt("NOTIFICATION_CRON_WINDOW_MINUTES", 2), 0))
-	if current.Due {
+	if current.Due && !skipCurrentWindow {
 		return current.ScheduledInstantUTC
 	}
 	if next, ok := getNextRepeatScheduleOccurrence(now, settings, subscriptions); ok {

@@ -23,6 +23,7 @@ export function AppScrollRestoration() {
   const navigationType = useNavigationType();
   const positionsRef = useRef(new Map<string, number>());
   const locationKeyRef = useRef(location.key);
+  const locationRef = useRef({ pathname: location.pathname, search: location.search, hash: location.hash });
   const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -65,11 +66,26 @@ export function AppScrollRestoration() {
     const root = getAppScrollRoot();
     const currentKey = location.key;
     const positions = positionsRef.current;
+    const previousLocation = locationRef.current;
+    const hashOnlyNavigation = previousLocation.pathname === location.pathname
+      && previousLocation.search === location.search
+      && previousLocation.hash !== location.hash;
+    const sameDocumentLocation = previousLocation.pathname === location.pathname
+      && previousLocation.search === location.search
+      && previousLocation.hash === location.hash;
+    locationRef.current = {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+    };
     locationKeyRef.current = currentKey;
 
     if (root) {
-      // #root 是应用滚动上下文，React Router 的 window 滚动恢复覆盖不到这里。
-      root.scrollTop = navigationType === "POP" ? positions.get(currentKey) ?? 0 : 0;
+      // hash 只是同一设置页内的锚点；保留当前 #root 位置，交给设置导航在骨架提交后定位，避免先被重置到顶部。
+      if (!hashOnlyNavigation && !sameDocumentLocation) {
+        // #root 是应用滚动上下文，React Router 的 window 滚动恢复覆盖不到这里。
+        root.scrollTop = navigationType === "POP" ? positions.get(currentKey) ?? 0 : 0;
+      }
       saveScrollPosition(positions, currentKey, root.scrollTop);
     }
 
@@ -77,7 +93,7 @@ export function AppScrollRestoration() {
       const latestRoot = getAppScrollRoot();
       if (latestRoot) saveScrollPosition(positions, currentKey, latestRoot.scrollTop);
     };
-  }, [location.key, navigationType]);
+  }, [location.hash, location.key, location.pathname, location.search, navigationType]);
 
   return null;
 }

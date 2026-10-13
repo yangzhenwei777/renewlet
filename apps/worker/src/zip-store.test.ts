@@ -5,6 +5,28 @@ import { createStoredZipFromSources, type StoredZipSource } from "./zip-store";
 const encoder = new TextEncoder();
 
 describe("stored ZIP writer", () => {
+  it.each([
+    { text: "", checksum: 0 },
+    { text: "123456789", checksum: 0xcbf43926 },
+    { text: "订阅🔔", checksum: 0x8fdc255d },
+  ])("writes the ZIP CRC for $text into both records", async ({ text, checksum }) => {
+    const bytes = encoder.encode(`prefix${text}suffix`).subarray(6, 6 + encoder.encode(text).length);
+    const archive = await createStoredZipFromSources([
+      { name: "asset.bin", size: bytes.length, load: async () => bytes },
+      { name: "text.txt", size: bytes.length, text },
+    ]);
+    const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+    let centralOffset = view.getUint32(archive.length - 6, true);
+    for (const name of ["asset.bin", "text.txt"]) {
+      const localOffset = view.getUint32(centralOffset + 42, true);
+      expect(view.getUint32(localOffset + 14, true)).toBe(checksum);
+      expect(view.getUint32(centralOffset + 16, true)).toBe(checksum);
+      const dataOffset = localOffset + 30 + encoder.encode(name).length;
+      expect(archive.subarray(dataOffset, dataOffset + bytes.length)).toEqual(bytes);
+      centralOffset += 46 + encoder.encode(name).length;
+    }
+  });
+
   it("writes a deterministic store-only ZIP with valid local, central, and end records", async () => {
     const archive = await createStoredZipFromSources([
       source("data.json", "{}"),

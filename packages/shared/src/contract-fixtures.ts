@@ -55,6 +55,7 @@ const notificationScheduleFixtureSchema = z.object({
     scheduledLocalTime: z.string().optional(),
     timeZone: z.string().optional(),
     scheduledInstantUtc: z.string().optional(),
+    nextDailyInstantUtc: z.string().optional(),
     itemTypes: z.array(z.enum(["renewal", "trial", "expired", "expiry"])),
     repeatReminder: z.object({
       interval: z.enum(REPEAT_REMINDER_INTERVALS),

@@ -145,11 +145,12 @@ func registerAuthHooks(app core.App) {
 		}
 		return nil
 	}
-	rejectMFAProtectedAuthRecord := func(request *http.Request, collection *core.Collection, record *core.Record) error {
+	rejectMFAProtectedAuthRecord := func(eventApp core.App, request *http.Request, collection *core.Collection, record *core.Record) error {
 		if collection == nil || collection.Name != "users" || record == nil {
 			return nil
 		}
-		enabled, err := productAuthProtectedForUser(app, record.Id)
+		// 认证事件可能运行在写事务内；必须读取事件 App 才能看到未提交的 MFA/Passkey 状态。
+		enabled, err := productAuthProtectedForUser(eventApp, record.Id)
 		if err != nil {
 			return err
 		}
@@ -164,7 +165,7 @@ func registerAuthHooks(app core.App) {
 		if err := rejectBannedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
-		if err := rejectMFAProtectedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
+		if err := rejectMFAProtectedAuthRecord(e.App, e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
 		return e.Next()
@@ -173,7 +174,7 @@ func registerAuthHooks(app core.App) {
 		if err := rejectBannedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
-		if err := rejectMFAProtectedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
+		if err := rejectMFAProtectedAuthRecord(e.App, e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
 		return e.Next()
@@ -182,7 +183,7 @@ func registerAuthHooks(app core.App) {
 		if err := rejectBannedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
-		if err := rejectMFAProtectedAuthRecord(e.Request, e.Collection, e.Record); err != nil {
+		if err := rejectMFAProtectedAuthRecord(e.App, e.Request, e.Collection, e.Record); err != nil {
 			return err
 		}
 		return e.Next()

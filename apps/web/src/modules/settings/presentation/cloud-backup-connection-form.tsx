@@ -3,9 +3,10 @@ import { Cloud, Database } from "lucide-react";
 import { FormField, FormFieldRow } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useI18n } from "@/i18n/I18nProvider";
 import type { CloudBackupFormState } from "../application/use-cloud-backup-controller";
-import type { CloudBackupProvider } from "@/lib/api/schemas/cloud-backup";
+import type { CloudBackupProvider, CloudBackupS3AddressingStyle } from "@/lib/api/schemas/cloud-backup";
 
 // 连接配置 tab 是 provider 草稿入口；密码/Secret 是 write-only 编辑态，不能从已保存配置回填明文。
 export type CloudBackupConnectionField =
@@ -25,6 +26,7 @@ interface CloudBackupConnectionFormProps {
   secretPlaceholder: string;
   onProviderChange: (provider: CloudBackupProvider) => void;
   onTextChange: (field: CloudBackupConnectionField, value: string) => void;
+  onAddressingStyleChange: (value: CloudBackupS3AddressingStyle) => void;
   disabled?: boolean;
 }
 
@@ -33,6 +35,7 @@ export function CloudBackupConnectionForm({
   secretPlaceholder,
   onProviderChange,
   onTextChange,
+  onAddressingStyleChange,
   disabled = false,
 }: CloudBackupConnectionFormProps) {
   const { t } = useI18n();
@@ -174,7 +177,7 @@ export function CloudBackupConnectionForm({
             <FormField
               id="cloudBackupS3Prefix"
               label={t("settings.cloudBackupS3Prefix")}
-              description={t("settings.cloudBackupPathHelp")}
+              description={t("settings.cloudBackupS3PrefixHelp")}
               className="sm:max-w-xl"
               descriptionClassName="leading-5"
             >
@@ -188,6 +191,30 @@ export function CloudBackupConnectionForm({
                   className="h-9 border-border bg-background"
                   aria-describedby={describedBy}
                 />
+              )}
+            </FormField>
+            <FormField
+              id="cloudBackupS3AddressingStyle"
+              label={t("settings.cloudBackupS3AddressingStyle")}
+              description={t("settings.cloudBackupS3AddressingStyleHelp")}
+              className="sm:max-w-xl"
+              descriptionClassName="leading-5"
+            >
+              {({ id, describedBy }) => (
+                <Select
+                  value={form.s3AddressingStyle}
+                  onValueChange={(value) => onAddressingStyleChange(value as CloudBackupS3AddressingStyle)}
+                  disabled={disabled}
+                >
+                  <SelectTrigger id={id} className="h-9 border-border bg-background" aria-describedby={describedBy}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">{t("settings.cloudBackupS3AddressingStyleAuto")}</SelectItem>
+                    <SelectItem value="pathStyle">{t("settings.cloudBackupS3AddressingStylePath")}</SelectItem>
+                    <SelectItem value="virtualHost">{t("settings.cloudBackupS3AddressingStyleVirtual")}</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </FormField>
             <FormFieldRow alignAt="sm" rowClassName="sm:grid-cols-2">

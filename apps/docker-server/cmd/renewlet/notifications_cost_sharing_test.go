@@ -307,7 +307,7 @@ func createFailedCronJobForTest(t *testing.T, app core.App, userID string, setti
 			Failed:    []channelFailure{{Channel: "webhook", Error: "still failing"}},
 		},
 	)
-	if err := finalizeNotificationJob(app, job, userID, schedule, notificationStatusFailed, "webhook: still failing", result); err != nil {
+	if _, err := finalizeNotificationJob(app, job, userID, schedule, notificationStatusFailed, "webhook: still failing", result); err != nil {
 		t.Fatal(err)
 	}
 }

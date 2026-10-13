@@ -10,7 +10,6 @@ import {
   useQuery,
   type QueryClient,
 } from "@tanstack/react-query";
-import { pb } from "@/lib/pocketbase";
 import { ApiError } from "@/lib/api-client";
 import { getLocaleHeaders } from "@/i18n/api-locale";
 import {
@@ -255,7 +254,8 @@ export const authClient = {
       void email;
       throw new Error(CLOUDFLARE_PASSWORD_RESET_DISABLED);
     }
-    await pb.collection("users").requestPasswordReset(email);
+    const { passwordResetService } = await import("@/services/password-reset-service");
+    await passwordResetService.request(email);
   },
 
   async confirmPasswordReset(token: string, password: string) {
@@ -264,6 +264,7 @@ export const authClient = {
       void password;
       throw new Error(CLOUDFLARE_PASSWORD_RESET_DISABLED);
     }
-    await pb.collection("users").confirmPasswordReset(token, password, password);
+    const { passwordResetService } = await import("@/services/password-reset-service");
+    await passwordResetService.confirm(token, password);
   },
 };

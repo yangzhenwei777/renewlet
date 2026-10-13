@@ -135,10 +135,14 @@ func cloudBackupTargetFromRecord(userID string, record *core.Record) cloudBackup
 	target.WebDAV = stored.WebDAV
 	target.S3 = stored.S3
 	if target.WebDAV != nil {
-		_ = target.WebDAV.NormalizeAndValidate()
+		if err := target.WebDAV.NormalizeAndValidate(); err != nil {
+			target.WebDAV = nil
+		}
 	}
 	if target.S3 != nil {
-		_ = target.S3.NormalizeAndValidate()
+		if err := target.S3.NormalizeAndValidate(); err != nil {
+			target.S3 = nil
+		}
 	}
 	if data, err := jsonBytesFromValue(record.Get("credential")); err == nil && len(bytes.TrimSpace(data)) > 0 {
 		_ = json.Unmarshal(data, &target.Credential)
@@ -215,7 +219,14 @@ func (config cloudBackupResolvedConfig) WebDAV() *cloudBackupWebDAVSettings {
 
 func (config cloudBackupResolvedConfig) S3() *cloudBackupS3Settings {
 	if target, ok := config.Targets[cloudBackupProviderS3]; ok {
-		return target.S3
+		if target.S3 == nil {
+			return nil
+		}
+		settings := *target.S3
+		if err := settings.NormalizeAndValidate(); err != nil {
+			return nil
+		}
+		return &settings
 	}
 	return nil
 }

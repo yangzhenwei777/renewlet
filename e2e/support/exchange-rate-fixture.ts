@@ -1,4 +1,4 @@
-import { cachedExchangeRateDataSchema, SUPPORTED_EXCHANGE_RATE_CURRENCIES } from "../../packages/shared/src/schemas/exchange-rates";
+import { cachedExchangeRateDataSchema, SUPPORTED_EXCHANGE_RATE_CURRENCIES } from "@renewlet/shared/schemas/exchange-rates";
 
 export const e2eFrankfurterRates = SUPPORTED_EXCHANGE_RATE_CURRENCIES.map((quote, index) => ({
   date: "2026-08-17", base: "USD", quote, rate: quote === "USD" ? 1 : 1 + (index + 1) / 1000,

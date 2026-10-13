@@ -6,12 +6,20 @@
       "DOM.Iterable",
       "ES2022"
     ],
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
+    "types": [
+      "vite/client",
+      "vitest/globals",
+      "@testing-library/jest-dom",
+      "node"
+    ],
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/typescript/all.tsbuildinfo"
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
     "vite/**/*.ts",
+    "scripts/**/*.ts",
     "lingui.config.ts",
     "vite.config.ts",
     "vitest.config.ts"

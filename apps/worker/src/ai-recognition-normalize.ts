@@ -31,6 +31,9 @@ import {
   isValidDateOnly,
 } from "@renewlet/shared/runtime";
 import { serverFormat, serverText, type AppLocale } from "./server-i18n";
+import { localizedConfigLabel } from "./custom-config-labels";
+import { calendarFeedBuiltInCategoryLabelKey, calendarFeedBuiltInPaymentMethodLabelKey } from "./calendar-feed-built-in-labels";
+import type { ServerI18nKey } from "./server-i18n-catalog";
 
 const BILLING_CYCLE_SET = new Set<string>(BILLING_CYCLES);
 const CUSTOM_CYCLE_UNIT_SET = new Set<string>(CUSTOM_CYCLE_UNITS);
@@ -397,8 +400,8 @@ export function aiRecognitionConfigContext(rawConfig: unknown, locale: AppLocale
   const parsed = customConfigSchema.safeParse(rawConfig);
   const config = parsed.success ? parsed.data : { categories: [], paymentMethods: [], statuses: [], currencies: [] };
   return {
-    categories: config.categories.map((item) => aiRecognitionConfigOption(item, locale)),
-    paymentMethods: config.paymentMethods.map((item) => aiRecognitionConfigOption(item, locale)),
+    categories: config.categories.map((item) => aiRecognitionConfigOption(item, locale, calendarFeedBuiltInCategoryLabelKey)),
+    paymentMethods: config.paymentMethods.map((item) => aiRecognitionConfigOption(item, locale, calendarFeedBuiltInPaymentMethodLabelKey)),
     tags,
   };
 }
@@ -406,10 +409,11 @@ export function aiRecognitionConfigContext(rawConfig: unknown, locale: AppLocale
 function aiRecognitionConfigOption(
   item: ApiCustomConfig["categories"][number],
   locale: AppLocale,
+  builtInLabelKey: (value: string) => ServerI18nKey | undefined,
 ): AIRecognitionPromptConfigOption {
   return {
     value: item.value,
-    label: locale === "en-US" ? item.labels["en-US"] : item.labels["zh-CN"],
+    label: localizedConfigLabel(item.labels, locale, builtInLabelKey(item.value)),
     zhCN: item.labels["zh-CN"],
     enUS: item.labels["en-US"],
   };

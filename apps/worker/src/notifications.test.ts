@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAppSettings } from "@renewlet/shared/settings-defaults";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
 import { apiSubscriptionSchema, type ApiSubscription } from "@renewlet/shared/schemas/subscriptions";
-import { collectNotificationItemsForLocalDate, notificationHistory, runScheduledNotifications } from "./notifications";
+import { collectNotificationItemsForLocalDate, notificationHistory, runScheduledForUser } from "./notifications";
 import { readSuccessData } from "./api-test-helpers";
 import { createCronJobResult } from "./notification-jobs";
 import { sendServerChan, serverChanEndpoint } from "./notification-serverchan";
@@ -291,7 +291,7 @@ describe("Cloudflare notifications", () => {
         items: [],
       },
       channels: { attempted: [], succeeded: [], failed: [] },
-    }) as { schedule: Record<string, unknown> };
+    });
 
     expect(result.schedule).toEqual({
       scheduledLocalDate: "2026-01-09",
@@ -326,60 +326,6 @@ describe("Cloudflare notifications", () => {
     expect(response.status).toBe(200);
     expect(body.jobs[0]?.result).toEqual({});
     expect(queries.filter(({ sql }) => /\bFROM\s+subscriptions\b/i.test(sql))).toHaveLength(0);
-  });
-
-  it("logs and rejects top-level scheduled failures without leaking secrets", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const env = fakeEnv(({ sql }) => {
-      if (sql.includes("FROM subscription_scheduler_state AS scheduler")) {
-        throw new Error("database is locked SCTsecret Bearer abc.def");
-      }
-      throw new Error(`unexpected query: ${sql}`);
-    });
-
-    await expect(runScheduledNotifications(env)).rejects.toThrow("database is locked [redacted] Bearer [redacted]");
-
-    expect(errorSpy).toHaveBeenCalledWith("scheduled_notifications_failed", expect.objectContaining({
-      event: "scheduled_notifications_failed",
-      phase: "list_due_users",
-      error: { name: "Error", message: "database is locked [redacted] Bearer [redacted]" },
-    }));
-  });
-
-  it("continues scheduled cron after one user fails", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-09T08:00:00.000Z"));
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const seenSettingsUsers: string[] = [];
-    // Cron 顶层按用户隔离失败；坏用户只写脱敏日志，不能阻断后续用户的通知窗口。
-    const env = fakeEnv(({ sql, params, method }) => {
-      if (method === "all" && sql.includes("FROM subscription_scheduler_state AS scheduler")) {
-        return d1All([{ user_id: "usr_bad" }, { user_id: "usr_ok" }]);
-      }
-      if (method === "first" && sql.includes("SELECT settings_json FROM settings")) {
-        const userId = String(params[0]);
-        seenSettingsUsers.push(userId);
-        if (userId === "usr_bad") throw new Error("settings broken SCTsecret");
-        return { settings_json: JSON.stringify(settings({ notificationTimeLocal: "09:59" as ApiAppSettings["notificationTimeLocal"] })) };
-      }
-      if (method === "all" && sql.includes("auto_renew = 1")) {
-        return d1All([]);
-      }
-      if (method === "all" && sql.includes("FROM subscriptions")) {
-        return d1All([]);
-      }
-      throw new Error(`unexpected ${method} query: ${sql}`);
-    });
-
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
-
-    expect(seenSettingsUsers).toEqual(expect.arrayContaining(["usr_bad", "usr_ok"]));
-    expect(errorSpy).toHaveBeenCalledWith("scheduled_notifications_failed", expect.objectContaining({
-      event: "scheduled_notifications_failed",
-      phase: "run_user",
-      userId: "usr_bad",
-      error: { name: "Error", message: "settings broken [redacted]" },
-    }));
   });
 
   it("keeps ServerChan business failures summarized inside the cron job history", async () => {
@@ -419,7 +365,7 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(errorSpy).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -504,7 +450,7 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(events).toEqual(["renewal-maintenance", "notification-content"]);
     expect(renewalSelectSql).toContain("billing_cycle IN");
@@ -512,7 +458,7 @@ describe("Cloudflare notifications", () => {
     expect(finalizeParams?.[0]).toBe("skipped");
   });
 
-  it("marks partial channel failures as failed cron jobs", async () => {
+  it("checkpoints successful channels before attempting the remaining channel", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-09T08:00:00.000Z"));
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 0, message: "ok" }), {
@@ -539,16 +485,17 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(finalizeParams?.[0]).toBe("failed");
+    expect(finalizeParams?.[0]).toBe("pending");
     const result = JSON.parse(String(finalizeParams?.[3])) as { channels: { succeeded: string[]; failed: Array<{ channel: string }> } };
     expect(result.channels.succeeded).toEqual(["serverchan"]);
-    expect(result.channels.failed.map((failure) => failure.channel)).toEqual(["telegram"]);
+    expect(result.channels.failed).toEqual([]);
+    expect(JSON.parse(String(finalizeParams?.[3]))).toHaveProperty("deliveryPending", ["telegram"]);
   });
 
-  it("retries only failed channels for failed cron jobs", async () => {
+  it.each(["failed", "sending"] as const)("preserves successful channels when retrying %s cron jobs", async (status) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-09T08:01:00.000Z"));
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ code: 0 }), { status: 200 }));
@@ -556,7 +503,7 @@ describe("Cloudflare notifications", () => {
     let markSendingParams: unknown[] | null = null;
     let finalizeParams: unknown[] | null = null;
     const existing = notificationJobRow({
-      status: "failed",
+      status,
       attempts: 1,
       result_json: JSON.stringify({
         source: "cron",
@@ -566,7 +513,7 @@ describe("Cloudflare notifications", () => {
           failed: [{ channel: "telegram", error: "old telegram failure" }],
         },
       }),
-      updated_at: "2026-01-09T08:00:00.000Z",
+      updated_at: "2026-01-09T07:00:00.000Z",
     });
     const env = fakeEnv(({ sql, params, method }) => {
       if (method === "all" && sql.includes("FROM subscription_scheduler_state AS scheduler")) return d1All([{ user_id: "usr_due" }]);
@@ -587,7 +534,7 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(markSendingParams?.[0]).toBe(2);
@@ -621,7 +568,7 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(writes).toEqual([]);
@@ -657,7 +604,7 @@ describe("Cloudflare notifications", () => {
       throw new Error(`unexpected ${method} query: ${sql}`);
     });
 
-    await expect(runScheduledNotifications(env)).resolves.toBeUndefined();
+    await expect(runScheduledForUser(env, "usr_due")).resolves.toEqual(expect.objectContaining({ outcome: expect.any(String) }));
 
     expect(markSendingParams?.[0]).toBe(2);
     expect(finalizeParams?.[0]).toBe("sent");

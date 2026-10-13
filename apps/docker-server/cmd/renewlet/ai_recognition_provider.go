@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/zendev-sh/goai"
@@ -434,6 +435,10 @@ func newAIRecognitionModel(settings aiRecognitionSettings) (provider.LanguageMod
 		if endpoint.RuntimeBaseURL != "" {
 			options = append(options, openai.WithBaseURL(endpoint.RuntimeBaseURL))
 		}
+		if requiresOpenAIMaxCompletionTokens(settings.Model) {
+			// GoAI 的模型能力识别落后于 OpenAI GPT-6 参数契约；在官方 Chat 边界显式选择新 token 字段，避免改写 HTTP 或影响兼容网关。
+			options = append(options, openai.WithUseMaxCompletionTokens(true))
+		}
 		return aiRecognitionRuntimeModel{LanguageModel: openai.Chat(settings.Model, options...), providerType: settings.ProviderType, transportProtocol: settings.TransportProtocol}, nil
 	case aiProtocolGeminiGenerateContent:
 		options := []google.Option{google.WithAPIKey(settings.APIKey), google.WithHTTPClient(aiProviderRuntimeHTTPClient(endpoint, "v1beta"))}
@@ -450,6 +455,40 @@ func newAIRecognitionModel(settings aiRecognitionSettings) (provider.LanguageMod
 	default:
 		return nil, errAIRecognitionProviderInvalid
 	}
+}
+
+func requiresOpenAIMaxCompletionTokens(modelID string) bool {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	if !strings.HasPrefix(modelID, "gpt-") {
+		return false
+	}
+	rest := strings.TrimPrefix(modelID, "gpt-")
+	majorEnd := 0
+	for majorEnd < len(rest) && rest[majorEnd] >= '0' && rest[majorEnd] <= '9' {
+		majorEnd++
+	}
+	if majorEnd == 0 {
+		return false
+	}
+	major, err := strconv.Atoi(rest[:majorEnd])
+	if err != nil || major < 6 {
+		return false
+	}
+	suffix := rest[majorEnd:]
+	for suffix != "" {
+		if suffix[0] == '-' {
+			suffix = suffix[1:]
+		}
+		separator := strings.IndexByte(suffix, '-')
+		if separator < 0 {
+			return suffix != "chat"
+		}
+		if suffix[:separator] == "chat" {
+			return false
+		}
+		suffix = suffix[separator:]
+	}
+	return true
 }
 
 func testAIRecognitionConnection(ctx context.Context, settings aiRecognitionSettings) error {

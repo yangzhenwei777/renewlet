@@ -1,312 +1,212 @@
-import { md5 } from "@noble/hashes/legacy.js";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
-import { XMLParser } from "fast-xml-parser";
-import { sendUpstreamRequest } from "./upstream-http";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { AuthType, createClient, getPatcher } from "webdav/web";
+import type { WebDAVClient } from "webdav";
+import { CLOUD_BACKUP_MAX_SNAPSHOT_BYTES } from "@renewlet/shared/schemas/cloud-backup";
 
-const WEBDAV_DIRECTORY_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
-const textEncoder = new TextEncoder();
-const xmlParser = new XMLParser({
-  ignoreAttributes: false,
-  removeNSPrefix: true,
-  parseAttributeValue: false,
-  parseTagValue: false,
-  trimValues: true,
+import { CronBudgetExceeded, type CronBudget } from "./cron-budget";
+import { fetchUpstream } from "./upstream-http";
+
+// SDK只有模块级传输扩展点；固定注册一次，异步上下文隔离每次操作，禁止按请求替换patcher。
+const operationBudget = new AsyncLocalStorage<CronBudget | undefined>();
+getPatcher().patch("fetch", (input: unknown, init: unknown) => {
+  if (typeof input !== "string") throw new TypeError("WebDAV SDK fetch requires a URL string");
+  const options = init as RequestInit;
+  const budget = operationBudget.getStore();
+  return fetchUpstream(input, options, budget);
 });
 
-type DigestState = {
-  algorithm: "MD5" | "MD5-SESS";
-  cnonce: string;
-  nc: number;
-  nonce: string;
-  opaque?: string;
-  qop: "auth" | null;
-  realm: string;
-};
+const CLOUD_BACKUP_UPSTREAM_TIMEOUT_MS = 45_000;
+
+export class WebDAVOperationLimitExceeded extends CronBudgetExceeded {
+  constructor() {
+    super("external");
+    this.name = "WebDAVOperationLimitExceeded";
+    this.message = "CLOUD_BACKUP_WEBDAV_REQUEST_LIMIT";
+  }
+}
 
 type WorkerWebDAVOptions = {
   baseURL: string;
+  budget?: CronBudget | undefined;
   password: string;
-  timeoutMs: number;
+  timeoutMs?: number;
   username: string;
 };
 
+/**
+ * WebDAV SDK 错误只在适配层转换为 Renewlet 可诊断的请求上下文；协议认证、XML 和响应状态由 webdav 官方客户端负责。
+ */
 export class WorkerWebDAVRequestError extends Error {
-  constructor(readonly response: Response) {
-    super(`WebDAV HTTP ${response.status}`);
+  constructor(
+    readonly response: Response | null,
+    readonly operation: string,
+    readonly target: string,
+    readonly timedOut: boolean,
+    readonly cause?: unknown,
+  ) {
+    super(`${operation} ${target}${timedOut ? " timed out" : " failed"}`);
     this.name = "WorkerWebDAVRequestError";
   }
 }
 
-/** Worker 原生 WebDAV 协议边界；业务层只接触相对路径和字节，不接触认证、XML 或 HTTP 状态。 */
 export class WorkerWebDAVClient {
   readonly #baseURL: string;
-  readonly #password: string;
+  readonly #budget: CronBudget | undefined;
+  readonly #client: WebDAVClient;
   readonly #timeoutMs: number;
-  readonly #username: string;
-  #digest: DigestState | null = null;
 
   constructor(options: WorkerWebDAVOptions) {
+    this.#budget = options.budget;
     this.#baseURL = options.baseURL.replace(/\/+$/, "");
-    this.#password = options.password;
-    this.#timeoutMs = options.timeoutMs;
-    this.#username = options.username;
+    this.#timeoutMs = options.timeoutMs ?? CLOUD_BACKUP_UPSTREAM_TIMEOUT_MS;
+    const hasCredentials = Boolean(options.username && options.password);
+    this.#client = createClient(this.#baseURL, {
+      authType: hasCredentials ? AuthType.Auto : AuthType.None,
+      ...(hasCredentials ? { username: options.username, password: options.password } : {}),
+    });
   }
 
-  async ensureDirectory(path: string): Promise<void> {
-    const segments = webDAVPathSegments(path);
-    for (let index = 1; index <= segments.length; index += 1) {
-      const currentPath = segments.slice(0, index).join("/");
-      const probe = await this.#request(currentPath, {
-        method: "PROPFIND",
-        headers: { Accept: "application/xml", Depth: "0" },
-      });
-      if (probe.status !== 404) {
-        await requireWebDAVStatus(probe, [200, 207]);
-        continue;
-      }
-      await cancelResponseBody(probe);
-      const created = await this.#request(currentPath, { method: "MKCOL" });
-      if (created.status === 405) {
-        // 并发请求可能已创建同一目录；只接受随后可 PROPFIND 的目标，不能把任意 405 当成功。
-        await cancelResponseBody(created);
-        const verified = await this.#request(currentPath, {
-          method: "PROPFIND",
-          headers: { Accept: "application/xml", Depth: "0" },
-        });
-        await requireWebDAVStatus(verified, [200, 207]);
-        continue;
-      }
-      await requireWebDAVStatus(created, [200, 201, 204]);
-    }
+  async ensureDirectory(path: string, recursive = true): Promise<void> {
+    await this.#run("MKCOL", path, (signal) => this.#client.createDirectory(path, { recursive, signal }));
   }
 
   async list(path: string): Promise<string[]> {
-    const response = await this.#request(path, {
-      method: "PROPFIND",
-      headers: {
-        Accept: "application/xml",
-        "Content-Type": "application/xml; charset=utf-8",
-        Depth: "1",
-      },
-      body: "<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:resourcetype/></d:prop></d:propfind>",
-    });
-    await requireWebDAVStatus(response, [200, 207], false);
-    const xml = new TextDecoder().decode(await readResponseBytes(response, WEBDAV_DIRECTORY_RESPONSE_MAX_BYTES));
-    return webDAVResponseBasenames(xml);
+    const entries = await this.#run("PROPFIND", path, (signal) => this.#client.getDirectoryContents(path, { signal }));
+    return entries
+      .filter((entry) => entry.type === "file")
+      .map((entry) => entry.basename)
+      .filter(Boolean);
   }
 
   async put(path: string, content: Uint8Array, contentType: string): Promise<void> {
-    const response = await this.#request(path, {
-      method: "PUT",
-      headers: {
-        "Content-Length": String(content.byteLength),
-        "Content-Type": contentType,
-      },
-      body: content.slice(),
-    });
-    await requireWebDAVStatus(response, [200, 201, 204]);
+    await this.#run("PUT", path, (signal) => this.#client.putFileContents(path, webDavBody(content), {
+      contentLength: content.byteLength,
+      headers: { "Content-Type": contentType },
+      signal,
+    }));
   }
 
-  async get(path: string, limitBytes: number): Promise<Uint8Array> {
-    const response = await this.#request(path, { method: "GET" });
-    await requireWebDAVStatus(response, [200], false);
-    return await readResponseBytes(response, limitBytes);
+  async get(path: string, limitBytes = CLOUD_BACKUP_MAX_SNAPSHOT_BYTES): Promise<Uint8Array> {
+    return await this.#run("GET", path, async (signal) => {
+      // customRequest 仍由 webdav 负责认证、路径编码和状态码处理；适配层只在业务边界限制响应体，避免下载先被 SDK 整包缓冲。
+      const response = await this.#client.customRequest(path, { method: "GET", signal });
+      const bytes = await readWebDAVResponseBody(response, limitBytes);
+      if (bytes.byteLength > limitBytes) throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
+      return bytes;
+    });
+  }
+
+  async stat(path: string): Promise<number> {
+    const result = await this.#run("PROPFIND", path, (signal) => this.#client.stat(path, { signal }));
+    const entry = "data" in result ? result.data : result;
+    if (entry.type !== "file" || !Number.isFinite(entry.size) || entry.size < 0) {
+      throw new Error("CLOUD_BACKUP_WEBDAV_STAT_INVALID");
+    }
+    return entry.size;
   }
 
   async delete(path: string): Promise<void> {
-    const response = await this.#request(path, { method: "DELETE" });
-    await requireWebDAVStatus(response, [200, 204]);
+    await this.#run("DELETE", path, (signal) => this.#client.deleteFile(path, { signal }));
   }
 
-  async #request(path: string, init: RequestInit): Promise<Response> {
-    const url = webDAVRequestURL(this.#baseURL, path);
-    let response = await this.#requestOnce(url, init);
-    if (response.status !== 401) return response;
-    const challenge = digestStateFromResponse(response);
-    if (!challenge) return response;
-
-    // Auto 认证先覆盖常见 Basic；只有服务端明确挑战 Digest 时才释放首个 401 body 并重放一次同一请求。
-    await cancelResponseBody(response);
-    this.#digest = challenge;
-    response = await this.#requestOnce(url, init);
-    return response;
+  #target(path: string): string {
+    try {
+      const base = new URL(this.#baseURL);
+      const basePath = base.pathname.replace(/\/+$/, "");
+      const suffix = path.split("/").map((segment) => segment.trim()).filter(Boolean).join("/");
+      return suffix ? `host=${base.host}; path=${basePath}/${suffix}` : `host=${base.host}; path=${basePath}/`;
+    } catch {
+      return `path=${path.replace(/^\/+/, "")}`;
+    }
   }
 
-  async #requestOnce(url: string, init: RequestInit): Promise<Response> {
-    const headers = new Headers(init.headers);
-    const authorization = this.#digest
-      ? digestAuthorization(this.#digest, this.#username, this.#password, init.method ?? "GET", new URL(url))
-      : basicAuthorization(this.#username, this.#password);
-    if (authorization) headers.set("Authorization", authorization);
-    return await sendUpstreamRequest(url, { ...init, headers }, {
-      provider: "WebDAV",
-      timeoutMs: this.#timeoutMs,
-      secrets: [this.#password],
-    });
+  async #run<T>(operation: string, path: string, action: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const budgetWasUnused = this.#budget !== undefined
+      && this.#budget.used.externalRequests + this.#budget.used.externalReserved === 0;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.#timeoutMs);
+    try {
+      return await operationBudget.run(this.#budget, () => action(controller.signal));
+    } catch (error) {
+      // 用满独占预算仍无法完成的操作不能靠下个tick重试；已有其它操作占额时仅让出本片。
+      if (error instanceof CronBudgetExceeded && error.resource === "external" && budgetWasUnused) throw new WebDAVOperationLimitExceeded();
+      if (error instanceof CronBudgetExceeded) throw error;
+      throw new WorkerWebDAVRequestError(webDAVResponseFromError(error), operation, this.#target(path), timedOut, error);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 
-async function requireWebDAVStatus(response: Response, allowed: readonly number[], cancelBody = true): Promise<void> {
-  if (!allowed.includes(response.status)) throw new WorkerWebDAVRequestError(response);
-  if (cancelBody) await cancelResponseBody(response);
+function webDavBody(content: Uint8Array): ArrayBuffer {
+  if (content.byteOffset === 0 && content.byteLength === content.buffer.byteLength && content.buffer instanceof ArrayBuffer) return content.buffer;
+  const copy = new ArrayBuffer(content.byteLength);
+  new Uint8Array(copy).set(content);
+  return copy;
 }
 
-async function cancelResponseBody(response: Response): Promise<void> {
-  if (response.body) await response.body.cancel().catch(() => undefined);
+function webDAVResponseFromError(error: unknown): Response | null {
+  if (!error || typeof error !== "object") return null;
+  const response = (error as { response?: unknown }).response;
+  return isResponseLike(response) ? response : null;
 }
 
-async function readResponseBytes(response: Response, limitBytes: number): Promise<Uint8Array> {
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > limitBytes) {
-    await cancelResponseBody(response);
-    throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
+function isResponseLike(value: unknown): value is Response {
+  return Boolean(value)
+    && typeof value === "object"
+    && typeof (value as { status?: unknown }).status === "number"
+    && typeof (value as { text?: unknown }).text === "function";
+}
+
+async function readWebDAVResponseBody(response: unknown, limitBytes: number): Promise<Uint8Array> {
+  const record = response && typeof response === "object" ? response as { body?: unknown; headers?: { get(name: string): string | null }; arrayBuffer?: () => Promise<ArrayBuffer> } : null;
+  const body = record?.body;
+  if (!isReadableStream(body)) {
+    const declaredLength = Number(record?.headers?.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > limitBytes) throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
+    if (record?.arrayBuffer) return boundedBytes(new Uint8Array(await record.arrayBuffer()), limitBytes);
+    throw new Error("CLOUD_BACKUP_WEBDAV_RESPONSE_BODY_INVALID");
   }
-  if (!response.body) return new Uint8Array();
-  const reader = response.body.getReader();
+
+  const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limitBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = limitBytes + 1 - total;
+      if (remaining <= 0) break;
+      const chunk = value.byteLength > remaining ? value.slice(0, remaining) : value;
+      chunks.push(chunk);
+      total += chunk.byteLength;
+      if (value.byteLength > remaining) break;
     }
-    chunks.push(value);
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
-  const output = new Uint8Array(total);
+
+  const bytes = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
-    output.set(chunk, offset);
+    bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return output;
+  return bytes;
 }
 
-function basicAuthorization(username: string, password: string): string | null {
-  if (!username || !password) return null;
-  const bytes = textEncoder.encode(`${username}:${password}`);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `Basic ${btoa(binary)}`;
+function boundedBytes(bytes: Uint8Array, limitBytes: number): Uint8Array {
+  if (bytes.byteLength > limitBytes) throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
+  return bytes;
 }
 
-function digestStateFromResponse(response: Response): DigestState | null {
-  const header = response.headers.get("www-authenticate") ?? "";
-  if (!/^\s*Digest\s/i.test(header)) return null;
-  const values: Record<string, string> = {};
-  const pattern = /([a-z0-9_-]+)\s*=\s*(?:"([^"]*)"|([^,\s]+))/gi;
-  for (let match = pattern.exec(header); match; match = pattern.exec(header)) {
-    const key = match[1]?.toLowerCase();
-    const value = match[2] ?? match[3];
-    if (key && value !== undefined) values[key] = value;
-  }
-  const realm = values["realm"];
-  const nonce = values["nonce"];
-  const algorithm = (values["algorithm"] ?? "MD5").toUpperCase();
-  if (!realm || !nonce || (algorithm !== "MD5" && algorithm !== "MD5-SESS")) return null;
-  const qopValues = (values["qop"] ?? "").split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-  if (qopValues.length > 0 && !qopValues.includes("auth")) return null;
-  return {
-    algorithm,
-    cnonce: randomHex(16),
-    nc: 0,
-    nonce,
-    ...(values["opaque"] ? { opaque: values["opaque"] } : {}),
-    qop: qopValues.includes("auth") ? "auth" : null,
-    realm,
-  };
-}
-
-function digestAuthorization(state: DigestState, username: string, password: string, method: string, url: URL): string {
-  state.nc += 1;
-  const nc = state.nc.toString(16).padStart(8, "0");
-  const uri = `${url.pathname}${url.search}`;
-  const initialHA1 = md5Hex(`${username}:${state.realm}:${password}`);
-  const ha1 = state.algorithm === "MD5-SESS" ? md5Hex(`${initialHA1}:${state.nonce}:${state.cnonce}`) : initialHA1;
-  const ha2 = md5Hex(`${method.toUpperCase()}:${uri}`);
-  const response = state.qop
-    ? md5Hex(`${ha1}:${state.nonce}:${nc}:${state.cnonce}:${state.qop}:${ha2}`)
-    : md5Hex(`${ha1}:${state.nonce}:${ha2}`);
-  const values = [
-    `username="${escapeDigestValue(username)}"`,
-    `realm="${escapeDigestValue(state.realm)}"`,
-    `nonce="${escapeDigestValue(state.nonce)}"`,
-    `uri="${escapeDigestValue(uri)}"`,
-    `response="${response}"`,
-    `algorithm=${state.algorithm}`,
-  ];
-  if (state.opaque) values.push(`opaque="${escapeDigestValue(state.opaque)}"`);
-  if (state.qop) values.push(`qop=${state.qop}`, `nc=${nc}`, `cnonce="${state.cnonce}"`);
-  return `Digest ${values.join(", ")}`;
-}
-
-function md5Hex(value: string): string {
-  return bytesToHex(md5(utf8ToBytes(value)));
-}
-
-function escapeDigestValue(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
-function webDAVRequestURL(baseURL: string, path: string): string {
-  const encodedPath = webDAVPathSegments(path).map((segment) => encodeURIComponent(segment)).join("/");
-  return encodedPath ? `${baseURL}/${encodedPath}` : `${baseURL}/`;
-}
-
-function webDAVPathSegments(path: string): string[] {
-  return path.split("/").map((segment) => segment.trim()).filter(Boolean);
-}
-
-function webDAVResponseBasenames(xml: string): string[] {
-  const parsed: unknown = xmlParser.parse(xml);
-  const root = objectProperty(parsed, "multistatus");
-  const responses = arrayValue(objectProperty(root, "response"));
-  const basenames: string[] = [];
-  for (const response of responses) {
-    const href = stringValue(objectProperty(response, "href"));
-    if (!href) continue;
-    const basename = decodedWebDAVBasename(href);
-    if (basename) basenames.push(basename);
-  }
-  return basenames;
-}
-
-function decodedWebDAVBasename(href: string): string {
-  const pathname = (() => {
-    try {
-      return new URL(href, "https://webdav.invalid").pathname;
-    } catch {
-      return href;
-    }
-  })();
-  const encoded = pathname.split("/").filter(Boolean).at(-1) ?? "";
-  try {
-    return decodeURIComponent(encoded);
-  } catch {
-    return encoded;
-  }
-}
-
-function objectProperty(value: unknown, key: string): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  return Object.entries(value).find(([entryKey]) => entryKey === key)?.[1];
-}
-
-function arrayValue(value: unknown): unknown[] {
-  if (value === undefined || value === null) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function stringValue(value: unknown): string | null {
-  if (typeof value === "string") return value.trim() || null;
-  const text = objectProperty(value, "#text");
-  return typeof text === "string" && text.trim() ? text.trim() : null;
-}
-
-function randomHex(bytes: number): string {
-  const value = new Uint8Array(bytes);
-  crypto.getRandomValues(value);
-  return Array.from(value, (item) => item.toString(16).padStart(2, "0")).join("");
+function isReadableStream(value: unknown): value is ReadableStream<Uint8Array> {
+  return typeof value === "object"
+    && value !== null
+    && "getReader" in value
+    && typeof (value as { getReader?: unknown }).getReader === "function";
 }

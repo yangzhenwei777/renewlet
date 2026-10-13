@@ -1,5 +1,6 @@
-import react from "@vitejs/plugin-react";
-import { lingui } from "@lingui/vite-plugin";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
+import { linguiCatalogs } from "./vite/lingui-catalogs.ts";
 import tailwindcss from "@tailwindcss/vite";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -96,9 +97,11 @@ export default defineConfig(async ({ command, mode }) => {
     customHeadHTMLPlugin(customHeadHTML, {
       updateStaticHeaders: command === "build" && renewletRuntime === "cloudflare",
     }),
-    lingui({ failOnCompileError: true }),
+    linguiCatalogs(),
     tailwindcss(),
     react(),
+    // 全量编译已越过完整路由预算；按已测组件渐进接入，未覆盖的 memo 继续由组件维护。
+    babel({ presets: [reactCompilerPreset({ compilationMode: "annotation" })] }),
     bundleModuleGraphPlugin(repoRoot),
   ];
   if (process.env["ANALYZE"] === "1") {
@@ -118,7 +121,7 @@ export default defineConfig(async ({ command, mode }) => {
       include: ["jszip", "sql.js"],
     },
     worker: {
-      plugins: () => [lingui({ failOnCompileError: true })],
+      plugins: () => [linguiCatalogs()],
     },
     resolve: {
       alias: {

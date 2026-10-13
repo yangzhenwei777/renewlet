@@ -4,7 +4,7 @@ import { productApiFetch, updateProductSettings } from "./support/product-api";
 import { performanceEnvironmentSchema, performanceFixture } from "../scripts/browser-performance";
 import {
   IMPORT_APPLY_SUBSCRIPTION_LIMIT, importApplyRequestSchema, importApplyResponseSchema,
-} from "../packages/shared/src/schemas/import-export";
+} from "@renewlet/shared/schemas/import-export";
 
 test.use({ storageState: adminStorageState });
 

@@ -9,20 +9,10 @@ import type { SessionData } from "./auth-client";
 type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const mocks = vi.hoisted(() => ({
-  authRefresh: vi.fn(),
-  authWithPassword: vi.fn(),
+  loadPasswordReset: vi.fn(),
+  requestPasswordReset: vi.fn(),
+  confirmPasswordReset: vi.fn(),
   fetch: vi.fn<FetchMock>(),
-  pb: {
-    authStore: {
-      isValid: true,
-      record: null as Record<string, unknown> | null,
-      token: "pb-token",
-      onChange: vi.fn(),
-      clear: vi.fn(),
-      save: vi.fn(),
-    },
-    collection: vi.fn(),
-  },
 }));
 
 vi.mock("@/services/runtime", () => ({
@@ -30,9 +20,10 @@ vi.mock("@/services/runtime", () => ({
   isCloudflareRuntime: false,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: mocks.pb,
-}));
+vi.mock("@/services/password-reset-service", () => {
+  mocks.loadPasswordReset();
+  return { passwordResetService: { request: mocks.requestPasswordReset, confirm: mocks.confirmPasswordReset } };
+});
 
 const sessionFixture: SessionData = {
   type: "session",
@@ -69,14 +60,22 @@ describe("authClient in PocketBase runtime", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal("fetch", mocks.fetch);
-    mocks.authRefresh.mockReset();
-    mocks.authWithPassword.mockReset();
+    mocks.loadPasswordReset.mockReset();
+    mocks.requestPasswordReset.mockReset().mockResolvedValue(undefined);
+    mocks.confirmPasswordReset.mockReset().mockResolvedValue(undefined);
     mocks.fetch.mockReset();
-    mocks.pb.collection.mockReset().mockReturnValue({
-      authRefresh: mocks.authRefresh,
-      authWithPassword: mocks.authWithPassword,
-    });
     window.localStorage.clear();
+  });
+
+  it("loads the native adapter only when password reset is requested", async () => {
+    const { authClient } = await import("./auth-client");
+    expect(mocks.loadPasswordReset).not.toHaveBeenCalled();
+    await authClient.requestPasswordReset("alice@example.com");
+    await authClient.confirmPasswordReset("reset-token", "new-password");
+    expect(mocks.loadPasswordReset).toHaveBeenCalledTimes(1);
+    expect(mocks.requestPasswordReset).toHaveBeenCalledWith("alice@example.com");
+    expect(mocks.confirmPasswordReset).toHaveBeenCalledWith("reset-token", "new-password");
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("validates restored product sessions through the product API instead of PocketBase authRefresh", async () => {
@@ -88,7 +87,7 @@ describe("authClient in PocketBase runtime", () => {
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.fetch.mock.calls[0]?.[0]).toBe("/api/app/auth/session");
-    expect(mocks.authRefresh).not.toHaveBeenCalled();
+    expect(mocks.loadPasswordReset).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(result.current.data?.session.expiresAt).toBe("2026-07-03T00:00:00.000Z");
       expect(result.current.isPending).toBe(false);
@@ -106,7 +105,7 @@ describe("authClient in PocketBase runtime", () => {
       method: "POST",
       body: JSON.stringify({ email: "alice@example.com", password: "password123" }),
     }));
-    expect(mocks.authWithPassword).not.toHaveBeenCalled();
+    expect(mocks.loadPasswordReset).not.toHaveBeenCalled();
     expect(readProductSession()?.session.expiresAt).toBe("2026-07-03T00:00:00.000Z");
   });
 

@@ -59,8 +59,8 @@ class FailFirstWriteClient implements D1Client {
   }
 }
 
-// canonical v3 schema 搭配故意污染的派生行，用于证明回填只相信 subscriptions facts；各 mixed-schema 用例再从这里定向破坏签名。
-function openDerivedDatabase({ v2Marker = true }: { v2Marker?: boolean } = {}): SqliteDerivedClient {
+// canonical derived schema 搭配故意污染的派生行，用于证明回填只相信 subscriptions facts；各 mixed-schema 用例再从这里定向破坏签名。
+function openDerivedDatabase({ v2Marker = true, v3Marker = false }: { v2Marker?: boolean; v3Marker?: boolean } = {}): SqliteDerivedClient {
   const db = new DatabaseSync(":memory:");
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -246,6 +246,10 @@ function openDerivedDatabase({ v2Marker = true }: { v2Marker?: boolean } = {}): 
     db.prepare("INSERT INTO subscription_derived_backfills (name, completed_at) VALUES (?, ?)")
       .run("subscription-derived-state-v2", timestamp);
   }
+  if (v3Marker) {
+    db.prepare("INSERT INTO subscription_derived_backfills (name, completed_at) VALUES (?, ?)")
+      .run("subscription-derived-state-v3", timestamp);
+  }
   return new SqliteDerivedClient(db);
 }
 
@@ -254,13 +258,13 @@ function markerCount(db: DatabaseSync, name: string): number {
     .get(name)?.["count"] ?? 0);
 }
 
-test("v3 rebuild restores collection, stats, schedule, and scheduler state from subscription facts", async () => {
+test("v4 rebuild restores collection, stats, schedule, and scheduler state from subscription facts", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
 
     assert.equal(markerCount(client.db, "subscription-derived-state-v2"), 1);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
     assert.deepEqual(plainRows(client.db.prepare(`SELECT subscription_id, user_id, name, search_text_lower
       FROM subscription_list_index ORDER BY subscription_id`).all()), [
       {
@@ -296,19 +300,42 @@ test("v3 rebuild restores collection, stats, schedule, and scheduler state from 
     assert.deepEqual(client.db.prepare("PRAGMA foreign_key_check").all(), []);
 
     await runBackfill(client, backfillNow);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
   } finally {
     client.db.close();
   }
 });
 
-test("a fresh migrated database records v3 only after empty-state invariants pass", async () => {
+test("an existing v3 marker still runs the v4 cancelled semantics rebuild", async () => {
+  const client = openDerivedDatabase({ v3Marker: true });
+  try {
+    await runBackfill(client, backfillNow);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
+  } finally {
+    client.db.close();
+  }
+});
+
+test("v4 rebuild removes cancelled repeat schedules and aggregate count", async () => {
+  const client = openDerivedDatabase({ v3Marker: true });
+  try {
+    client.db.prepare("UPDATE subscriptions SET status = 'cancelled' WHERE id = 'sub_one'").run();
+    await runBackfill(client, backfillNow);
+    assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_repeat_schedule").get()?.["count"], 0);
+    assert.equal(client.db.prepare("SELECT repeat_reminder_count FROM subscription_scheduler_state WHERE user_id = 'usr_one'").get()?.["repeat_reminder_count"], 0);
+  } finally {
+    client.db.close();
+  }
+});
+
+test("a fresh migrated database records v4 only after empty-state invariants pass", async () => {
   const client = openDerivedDatabase({ v2Marker: false });
   try {
     client.db.exec("DELETE FROM users");
 
     await runBackfill(client, backfillNow);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
     assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_list_index").get()?.["count"], 0);
     assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_user_stats").get()?.["count"], 0);
     assert.deepEqual(client.db.prepare("PRAGMA foreign_key_check").all(), []);
@@ -317,21 +344,21 @@ test("a fresh migrated database records v3 only after empty-state invariants pas
   }
 });
 
-test("an interrupted v3 run remains unmarked and safely replays", async () => {
+test("an interrupted v4 run remains unmarked and safely replays", async () => {
   const client = openDerivedDatabase();
   try {
     await assert.rejects(runBackfill(new FailFirstWriteClient(client), backfillNow), /injected derived-state interruption/);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 0);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 0);
 
     await runBackfill(client, backfillNow);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
     assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_list_index").get()?.["count"], 2);
   } finally {
     client.db.close();
   }
 });
 
-test("a completed v3 marker verifies corruption and never silently rebuilds it", async () => {
+test("a completed v4 marker verifies corruption and never silently rebuilds it", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
@@ -344,7 +371,30 @@ test("a completed v3 marker verifies corruption and never silently rebuilds it",
   }
 });
 
-test("a completed v3 marker rejects a missing repeat schedule even when its aggregate was also cleared", async () => {
+test("a completed v4 marker accepts public visibility updates without rewriting tag timestamps", async () => {
+  const client = openDerivedDatabase();
+  try {
+    await runBackfill(client, backfillNow);
+    const previousTagTimestamp = client.db.prepare(`SELECT updated_at FROM subscription_tags
+      WHERE user_id = 'usr_one' AND subscription_id = 'sub_one' AND tag_norm = 'work'`).get()?.["updated_at"];
+    client.db.exec(`
+      UPDATE subscriptions
+      SET public_hidden = 1, updated_at = '2026-08-24T13:00:00.000Z'
+      WHERE id = 'sub_one';
+      UPDATE subscription_list_index
+      SET public_hidden = 1, updated_at = '2026-08-24T13:00:00.000Z'
+      WHERE subscription_id = 'sub_one';
+    `);
+
+    await runBackfill(client, backfillNow);
+    assert.equal(client.db.prepare(`SELECT updated_at FROM subscription_tags
+      WHERE user_id = 'usr_one' AND subscription_id = 'sub_one' AND tag_norm = 'work'`).get()?.["updated_at"], previousTagTimestamp);
+  } finally {
+    client.db.close();
+  }
+});
+
+test("a completed v4 marker rejects a missing repeat schedule even when its aggregate was also cleared", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
@@ -363,7 +413,7 @@ test("a completed v3 marker rejects a missing repeat schedule even when its aggr
   }
 });
 
-test("a completed v3 marker rejects parseable scheduler instants that are not legal configured occurrences", async () => {
+test("a completed v4 marker rejects parseable scheduler instants that are not legal configured occurrences", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
@@ -377,7 +427,7 @@ test("a completed v3 marker rejects parseable scheduler instants that are not le
   }
 });
 
-test("a completed v3 marker accepts an empty user without a daily scheduler occurrence", async () => {
+test("a completed v4 marker accepts an empty user without a daily scheduler occurrence", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
@@ -396,24 +446,24 @@ test("a completed v3 marker accepts an empty user without a daily scheduler occu
     `);
 
     await runBackfill(client, backfillNow);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
   } finally {
     client.db.close();
   }
 });
 
-test("a completed v3 marker accepts overdue scheduler occurrences that still match the stored settings", async () => {
+test("a completed v4 marker accepts overdue scheduler occurrences that still match the stored settings", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
     await runBackfill(client, (): Date => new Date("2026-08-27T12:00:00.000Z"));
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
   } finally {
     client.db.close();
   }
 });
 
-test("a completed v3 marker accepts an immediate overdue auto-renew check after settings refresh", async () => {
+test("a completed v4 marker accepts an immediate overdue auto-renew check after settings refresh", async () => {
   const client = openDerivedDatabase();
   try {
     await runBackfill(client, backfillNow);
@@ -423,7 +473,7 @@ test("a completed v3 marker accepts an immediate overdue auto-renew check after 
       WHERE user_id = 'usr_one'`).run();
 
     await runBackfill(client, backfillNow);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 1);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 1);
   } finally {
     client.db.close();
   }
@@ -439,7 +489,7 @@ test("a mixed scheduler schema is rejected before any projection repair writes",
     await assert.rejects(runBackfill(client, backfillNow), /invalid or mixed/);
     assert.equal(client.db.prepare("SELECT name FROM subscription_list_index WHERE subscription_id = 'sub_one'")
       .get()?.["name"], staleName);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 0);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 0);
   } finally {
     client.db.close();
   }
@@ -464,7 +514,7 @@ test("a mixed stats schema without the released CHECK constraints is rejected", 
     `);
 
     await assert.rejects(runBackfill(client, backfillNow), /invalid or mixed/);
-    assert.equal(markerCount(client.db, "subscription-derived-state-v3"), 0);
+    assert.equal(markerCount(client.db, "subscription-derived-state-v4"), 0);
   } finally {
     client.db.close();
   }

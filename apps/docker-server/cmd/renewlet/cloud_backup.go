@@ -88,6 +88,9 @@ func (policy *cloudBackupPolicy) NormalizeAndValidate(locale appLocale) error {
 func (settings *cloudBackupWebDAVSettings) NormalizeAndValidate() error {
 	settings.URL = strings.TrimSpace(settings.URL)
 	settings.Username = strings.TrimSpace(settings.Username)
+	if len(settings.Username) > 256 || len(settings.Path) > 512 {
+		return errors.New("CLOUD_BACKUP_WEBDAV_PATH_INVALID")
+	}
 	if strings.Contains(strings.TrimSpace(settings.Path), "..") {
 		return errors.New("CLOUD_BACKUP_WEBDAV_PATH_INVALID")
 	}
@@ -106,11 +109,22 @@ func (settings *cloudBackupS3Settings) NormalizeAndValidate() error {
 	settings.Endpoint = strings.TrimSpace(settings.Endpoint)
 	settings.Region = strings.TrimSpace(settings.Region)
 	settings.Bucket = strings.TrimSpace(settings.Bucket)
-	if strings.Contains(strings.TrimSpace(settings.Prefix), "..") {
+	prefix := cloudBackupDefaultRemotePrefix
+	if settings.Prefix != nil {
+		prefix = strings.TrimSpace(*settings.Prefix)
+	}
+	if strings.Contains(prefix, "..") {
 		return errors.New("CLOUD_BACKUP_S3_PREFIX_INVALID")
 	}
-	settings.Prefix = normalizeCloudBackupPrefix(settings.Prefix, "renewlet")
+	if len(prefix) > 512 {
+		return errors.New("CLOUD_BACKUP_S3_PREFIX_INVALID")
+	}
+	prefix = normalizeCloudBackupPrefix(prefix, "")
+	settings.Prefix = &prefix
 	settings.AccessKeyID = strings.TrimSpace(settings.AccessKeyID)
+	if len(settings.AccessKeyID) > 256 || len(settings.Bucket) > 128 || len(settings.Region) > 64 {
+		return errors.New("CLOUD_BACKUP_S3_CONFIG_INVALID")
+	}
 	parsed, err := url.Parse(settings.Endpoint)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return errors.New("CLOUD_BACKUP_S3_ENDPOINT_INVALID")
@@ -124,8 +138,25 @@ func (settings *cloudBackupS3Settings) NormalizeAndValidate() error {
 	if settings.Region == "" {
 		return errors.New("CLOUD_BACKUP_S3_REGION_REQUIRED")
 	}
-	settings.AddressingStyle = ""
+	addressingStyle, err := normalizeCloudBackupS3AddressingStyle(settings.AddressingStyle)
+	if err != nil {
+		return err
+	}
+	settings.AddressingStyle = addressingStyle
 	return nil
+}
+
+func normalizeCloudBackupS3AddressingStyle(value string) (string, error) {
+	switch strings.TrimSpace(value) {
+	case "", cloudBackupS3AddressingAuto:
+		return cloudBackupS3AddressingAuto, nil
+	case cloudBackupS3AddressingPathStyle:
+		return cloudBackupS3AddressingPathStyle, nil
+	case cloudBackupS3AddressingVirtualHost:
+		return cloudBackupS3AddressingVirtualHost, nil
+	default:
+		return "", errors.New("CLOUD_BACKUP_S3_ADDRESSING_STYLE_INVALID")
+	}
 }
 
 func normalizeCloudBackupPrefix(value string, fallback string) string {
@@ -195,7 +226,7 @@ func handleCloudBackupTest(app core.App, e *core.RequestEvent) error {
 	ctx, cancel := context.WithTimeout(e.Request.Context(), 45*time.Second)
 	defer cancel()
 	if err := client.Test(ctx); err != nil {
-		return cloudBackupOperationError(e, locale, "cloudBackup.testFailed", "CLOUD_BACKUP_TEST_FAILED", err)
+		return cloudBackupOperationError(e, locale, "cloudBackup.testFailed", err)
 	}
 	return apiSuccessJSON(e, http.StatusOK, cloudBackupTestResponse{
 		CheckedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -219,7 +250,7 @@ func handleCloudBackupsList(app core.App, e *core.RequestEvent) error {
 	defer cancel()
 	manifests, err := target.Client.List(ctx)
 	if err != nil {
-		return cloudBackupOperationError(e, locale, "cloudBackup.listFailed", "CLOUD_BACKUP_LIST_FAILED", err)
+		return cloudBackupOperationError(e, locale, "cloudBackup.listFailed", err)
 	}
 	snapshots := snapshotsFromManifests(target.Provider, manifests)
 	sort.Slice(snapshots, func(i, j int) bool {
@@ -240,7 +271,7 @@ func handleCloudBackupsCreate(app core.App, e *core.RequestEvent) error {
 	snapshots, err := createCloudBackupSnapshotForUserProvider(e.Request.Context(), app, e.Auth, body.Provider)
 	if err != nil {
 		markCloudBackupStatus(app, e.Auth.Id, body.Provider, cloudBackupStatusFailed, persistedCloudBackupErrorMessage(err))
-		return cloudBackupOperationError(e, locale, "cloudBackup.createFailed", "CLOUD_BACKUP_CREATE_FAILED", err)
+		return cloudBackupOperationError(e, locale, "cloudBackup.createFailed", err)
 	}
 	return apiSuccessJSON(e, http.StatusCreated, cloudBackupCreateSnapshotResponse{Snapshots: snapshots})
 }
@@ -266,7 +297,7 @@ func handleCloudBackupsDownload(app core.App, e *core.RequestEvent) error {
 		}
 		content, manifest, err = client.Download(ctx, id)
 		if err != nil {
-			return cloudBackupOperationError(e, locale, "cloudBackup.downloadFailed", "CLOUD_BACKUP_DOWNLOAD_FAILED", err)
+			return cloudBackupOperationError(e, locale, "cloudBackup.downloadFailed", err)
 		}
 		if err := verifyCloudBackupSnapshotBytes(content, manifest); err != nil {
 			return e.BadRequestError(serverText(locale, "cloudBackup.checksumFailed"), err)
@@ -274,7 +305,7 @@ func handleCloudBackupsDownload(app core.App, e *core.RequestEvent) error {
 	} else {
 		content, manifest, err = downloadCloudBackupSnapshotWithoutProvider(ctx, app, e.Auth.Id, id)
 		if err != nil {
-			return cloudBackupOperationError(e, locale, "cloudBackup.downloadFailed", "CLOUD_BACKUP_DOWNLOAD_FAILED", err)
+			return cloudBackupOperationError(e, locale, "cloudBackup.downloadFailed", err)
 		}
 	}
 	headers := e.Response.Header()
@@ -305,14 +336,14 @@ func handleCloudBackupsDelete(app core.App, e *core.RequestEvent) error {
 			return e.BadRequestError(serverText(locale, "cloudBackup.configIncomplete"), err)
 		}
 		if err := client.Delete(ctx, id); err != nil {
-			return cloudBackupOperationError(e, locale, "cloudBackup.deleteFailed", "CLOUD_BACKUP_DELETE_FAILED", err)
+			return cloudBackupOperationError(e, locale, "cloudBackup.deleteFailed", err)
 		}
 	} else if err := deleteCloudBackupSnapshotWithoutProvider(ctx, app, e.Auth.Id, id); err != nil {
 		messageKey := "cloudBackup.deleteFailed"
 		if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil && remoteErr.code == "CLOUD_BACKUP_PROVIDER_REQUIRED" {
 			messageKey = "cloudBackup.providerRequired"
 		}
-		return cloudBackupOperationError(e, locale, messageKey, "CLOUD_BACKUP_DELETE_FAILED", err)
+		return cloudBackupOperationError(e, locale, messageKey, err)
 	}
 	return apiEmptySuccessJSON(e, http.StatusOK)
 }
@@ -352,6 +383,9 @@ func cloudBackupRemoteClientForTarget(target cloudBackupResolvedTarget) (cloudBa
 		if target.WebDAV == nil {
 			return nil, errors.New("CLOUD_BACKUP_WEBDAV_REQUIRED")
 		}
+		if err := target.WebDAV.NormalizeAndValidate(); err != nil {
+			return nil, err
+		}
 		if strings.TrimSpace(target.Credential.WebDAVPassword) == "" {
 			return nil, errors.New("CLOUD_BACKUP_WEBDAV_CREDENTIAL_REQUIRED")
 		}
@@ -359,6 +393,9 @@ func cloudBackupRemoteClientForTarget(target cloudBackupResolvedTarget) (cloudBa
 	case cloudBackupProviderS3:
 		if target.S3 == nil {
 			return nil, errors.New("CLOUD_BACKUP_S3_REQUIRED")
+		}
+		if err := target.S3.NormalizeAndValidate(); err != nil {
+			return nil, err
 		}
 		if strings.TrimSpace(target.S3.AccessKeyID) == "" || strings.TrimSpace(target.Credential.S3SecretAccessKey) == "" {
 			return nil, errors.New("CLOUD_BACKUP_S3_CREDENTIAL_REQUIRED")
@@ -476,14 +513,14 @@ func buildCloudBackupSnapshotPayload(app core.App, user *core.Record) (cloudBack
 	filename := id + ".zip"
 	manifest := cloudBackupSnapshotManifest{
 		Kind:                "renewlet-cloud-backup-snapshot",
-			SchemaVersion:       cloudBackupTransportSchemaVersion,
+		SchemaVersion:       cloudBackupTransportSchemaVersion,
 		ID:                  id,
 		Filename:            filename,
 		CreatedAt:           exportedAt.Format(time.RFC3339Nano),
 		SizeBytes:           source.Size(),
 		SHA256:              hex.EncodeToString(hash.Sum(nil)),
 		ExportKind:          "renewlet-export",
-			ExportSchemaVersion: renewletExportSchemaVersion,
+		ExportSchemaVersion: renewletExportSchemaVersion,
 	}
 	return cloudBackupSnapshotPayload{Source: source, ID: id, Filename: filename, Manifest: manifest}, nil
 }
@@ -494,7 +531,8 @@ func uploadCloudBackupSnapshotToTarget(ctx context.Context, app core.App, userID
 		return cloudBackupSnapshotDTO{}, err
 	}
 	if err := enforceCloudBackupRetention(ctx, target.Client, target.Retention, payload.ID); err != nil {
-		slog.Warn("cloud backup retention cleanup failed", "user", userID, "provider", target.Provider, "error", err)
+		// manifest 列表或删除失败属于当前备份链路的一部分；继续标记成功会掩盖权限和损坏对象，调用方负责持久化阶段码。
+		return cloudBackupSnapshotDTO{}, err
 	}
 	markCloudBackupSuccess(app, userID, target.Provider, payload.Manifest.CreatedAt)
 	return snapshotFromManifest(target.Provider, payload.Manifest), nil
@@ -504,11 +542,8 @@ func verifyCloudBackupSnapshotBytes(content []byte, manifest cloudBackupSnapshot
 	if int64(len(content)) > cloudBackupSnapshotMaxBytes {
 		return errors.New("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE")
 	}
-	if manifest.Kind != "renewlet-cloud-backup-snapshot" ||
-		manifest.SchemaVersion != cloudBackupTransportSchemaVersion ||
-		manifest.ExportKind != "renewlet-export" ||
-		manifest.ExportSchemaVersion != renewletExportSchemaVersion {
-		return errors.New("CLOUD_BACKUP_MANIFEST_INVALID")
+	if err := validateCloudBackupManifest(manifest); err != nil {
+		return err
 	}
 	if manifest.SizeBytes != int64(len(content)) {
 		return errors.New("CLOUD_BACKUP_SIZE_MISMATCH")
@@ -516,6 +551,21 @@ func verifyCloudBackupSnapshotBytes(content []byte, manifest cloudBackupSnapshot
 	hash := sha256.Sum256(content)
 	if !strings.EqualFold(hex.EncodeToString(hash[:]), manifest.SHA256) {
 		return errors.New("CLOUD_BACKUP_SHA256_MISMATCH")
+	}
+	return nil
+}
+
+func validateCloudBackupManifest(manifest cloudBackupSnapshotManifest) error {
+	if manifest.Kind != "renewlet-cloud-backup-snapshot" ||
+		manifest.SchemaVersion != cloudBackupTransportSchemaVersion ||
+		manifest.ID == "" || manifest.Filename == "" || manifest.CreatedAt == "" ||
+		manifest.ExportKind != "renewlet-export" ||
+		manifest.ExportSchemaVersion != renewletExportSchemaVersion ||
+		manifest.SizeBytes < 0 || len(manifest.SHA256) != sha256.Size*2 {
+		return errors.New("CLOUD_BACKUP_MANIFEST_INVALID")
+	}
+	if _, err := hex.DecodeString(manifest.SHA256); err != nil {
+		return errors.New("CLOUD_BACKUP_MANIFEST_INVALID")
 	}
 	return nil
 }
@@ -597,24 +647,19 @@ func cloudBackupProviderFromRequest(request *http.Request) (string, bool, error)
 }
 
 func cloudBackupProviderParameterError(e *core.RequestEvent, locale appLocale, code string, message string) error {
-	return apiErrorJSON(e, http.StatusBadRequest, code, serverText(locale, "cloudBackup.providerInvalid"), &cloudBackupErrorDetails{
-		RawResponseText: optionalCloudBackupString(message),
-	})
+	return apiErrorJSON(e, http.StatusBadRequest, code, serverText(locale, "cloudBackup.providerInvalid"), cloudBackupLocalErrorDetails("local", "request-validation", "cloud backup API", message))
 }
 
-func cloudBackupOperationError(e *core.RequestEvent, locale appLocale, messageKey string, fallbackCode string, err error) error {
+func cloudBackupOperationError(e *core.RequestEvent, locale appLocale, messageKey string, err error) error {
 	if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil {
-		// 操作层 code 保持稳定，provider 细节只放 details；数据库状态只保存 persistedCloudBackupErrorMessage 的短摘要。
-		return apiErrorJSON(e, http.StatusBadRequest, fallbackCode, serverText(locale, messageKey), remoteErr.details)
+		// 远端阶段码直接穿过 API 边界；只有展示文案本地化，避免丢失真实失败阶段。
+		return apiErrorJSON(e, http.StatusBadRequest, remoteErr.code, serverText(locale, messageKey), remoteErr.details)
 	}
-	return apiErrorJSON(e, http.StatusBadRequest, fallbackCode, serverText(locale, messageKey), cloudBackupLocalErrorDetails(err))
-}
-
-func persistedCloudBackupErrorMessage(err error) string {
-	if remoteErr := cloudBackupRemoteErrorFrom(err); remoteErr != nil {
-		return remoteErr.code
+	code := "CLOUD_BACKUP_LOCAL_OPERATION_FAILED"
+	if candidate := stableCloudBackupErrorCode(errorMessage(err)); candidate != "" {
+		code = candidate
 	}
-	return "local_sdk_error"
+	return apiErrorJSON(e, http.StatusBadRequest, code, serverText(locale, messageKey), cloudBackupLocalErrorDetails("", "local", "cloud backup", errorMessage(err)))
 }
 
 func markCloudBackupSuccess(app core.App, userID string, provider string, backupAt string) {

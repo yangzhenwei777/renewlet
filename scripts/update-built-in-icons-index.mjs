@@ -20,7 +20,7 @@ import {
   countBuiltInIconProviders,
   createBuiltInIconSearchIndex,
   createBuiltInIconSeedMetadata,
-} from "../packages/shared/src/built-in-icon-index-builder.ts";
+} from "@renewlet/shared/built-in-icon-index-builder";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.resolve(__dirname, "../packages/shared/data/media-resolver-config.json");

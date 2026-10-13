@@ -139,7 +139,7 @@ class TelegramBotTestStatement {
       const rows = this.state.subscriptions.filter((row) => row.user_id === userId);
       return {
         auto_renew_count: rows.filter((row) => row.auto_renew === 1).length,
-        repeat_reminder_count: rows.filter((row) => row.repeat_reminder_enabled === 1).length,
+        repeat_reminder_count: rows.filter((row) => row.repeat_reminder_enabled === 1 && row.status !== "cancelled").length,
       } as T;
     }
     return null;

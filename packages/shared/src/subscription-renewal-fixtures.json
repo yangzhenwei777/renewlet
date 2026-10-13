@@ -258,5 +258,137 @@
     "today": "2026-03-01",
     "mode": "manual",
     "eligible": false
+  },
+  {
+    "name": "monthly-century-end-anchor",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": "1900-01-31",
+      "nextBillingDate": "1900-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2026-10-09",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-10-31",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "quarterly-leap-month-equal-auto",
+    "input": {
+      "billingCycle": "quarterly",
+      "status": "active",
+      "startDate": "2023-11-30",
+      "nextBillingDate": "2024-02-29",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2028-02-29",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2028-02-29",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "quarterly-leap-month-strict-manual",
+    "input": {
+      "billingCycle": "quarterly",
+      "status": "active",
+      "startDate": "2023-11-30",
+      "nextBillingDate": "2024-02-29",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2028-02-29",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2028-05-30",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "annual-leap-century-clamp",
+    "input": {
+      "billingCycle": "annual",
+      "status": "active",
+      "startDate": "2000-02-29",
+      "nextBillingDate": "2001-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2100-02-28",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2100-02-28",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "annual-leap-century-strict",
+    "input": {
+      "billingCycle": "annual",
+      "status": "active",
+      "startDate": "2000-02-29",
+      "nextBillingDate": "2001-02-28",
+      "autoRenew": false,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "2100-02-28",
+    "mode": "manual",
+    "eligible": true,
+    "expectedNextBillingDate": "2101-02-28",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-five-month-gap",
+    "input": {
+      "billingCycle": "custom",
+      "status": "active",
+      "startDate": "2024-01-31",
+      "nextBillingDate": "2024-06-30",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true,
+      "customDays": 5,
+      "customCycleUnit": "month"
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2026-07-31",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "custom-two-year-gap",
+    "input": {
+      "billingCycle": "custom",
+      "status": "active",
+      "startDate": "2020-02-29",
+      "nextBillingDate": "2022-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true,
+      "customDays": 2,
+      "customCycleUnit": "year"
+    },
+    "today": "2026-03-01",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "2028-02-29",
+    "expectedStatus": "active"
+  },
+  {
+    "name": "monthly-calendar-advance-limit",
+    "input": {
+      "billingCycle": "monthly",
+      "status": "active",
+      "startDate": "0001-01-31",
+      "nextBillingDate": "0001-02-28",
+      "autoRenew": true,
+      "autoCalculateNextBillingDate": true
+    },
+    "today": "1667-09-30",
+    "mode": "auto",
+    "eligible": true,
+    "expectedNextBillingDate": "1667-09-30",
+    "expectedStatus": "active"
   }
 ]

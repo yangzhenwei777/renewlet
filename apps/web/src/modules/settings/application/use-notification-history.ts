@@ -22,6 +22,7 @@ import {
   type NotificationOverviewResponse,
 } from "@/lib/api/schemas/notifications";
 import { notificationService } from "@/services/notification-service";
+import { notificationQueryKeys } from "@/hooks/notification-query-cache";
 import { toSettingsReadState, type SettingsReadState } from "./settings-read-state";
 
 export type {
@@ -37,7 +38,7 @@ export function useNotificationHistory() {
   const [status, setStatus] = useState<NotificationHistoryStatusFilter>("all");
 
   const overviewQuery = useQuery({
-    queryKey: ["notification-overview"],
+    queryKey: notificationQueryKeys.overview,
     queryFn: async ({ signal }) => await notificationService.overview(signal),
   });
 

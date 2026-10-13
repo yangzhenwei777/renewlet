@@ -1,3 +1,5 @@
+import { crc32 } from "node:zlib";
+
 type StoredZipSourceBase = {
   name: string;
   size: number;
@@ -14,7 +16,6 @@ type PreparedStoredZipSource = StoredZipSource & {
   localOffset: number;
 };
 
-const CRC32_TABLE = createCrc32Table();
 const textEncoder = new TextEncoder();
 const ZIP_LOCAL_HEADER_BYTES = 30;
 const ZIP_CENTRAL_HEADER_BYTES = 46;
@@ -22,14 +23,14 @@ const ZIP_END_BYTES = 22;
 
 /**
  * store-only ZIP 先按 metadata 算出精确长度，再把每个 source 原位写进唯一输出 buffer。
- * load 必须一次只返回一个 entry；调用方不能把全部资产内容预先聚合到数组中。
+ * load 一次只返回一个 entry；直接导出顺序读取R2，Cron续接可传入既有有界检查点的视图。
  * 这里故意不压缩：可精确预判 16 MiB 峰值，也避免 Worker isolate 为压缩器再保留整份输入状态。
  */
 export async function createStoredZipFromSources(
   sources: StoredZipSource[],
   date = new Date(),
   maxBytes = Number.MAX_SAFE_INTEGER,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const prepared = prepareSources(sources);
   const totalBytes = storedZipSize(prepared);
   if (totalBytes > maxBytes) throw new Error("CLOUD_BACKUP_SNAPSHOT_TOO_LARGE");
@@ -54,6 +55,7 @@ export async function createStoredZipFromSources(
       // 循环体不保存 data 引用，下一项加载前允许当前 R2 ArrayBuffer 被回收，峰值保持“最终 ZIP + 单资产”。
     }
     const entryDate = source.date ?? date;
+    // 现有nodejs_compat提供ZIP所需的IEEE CRC32；原生实现避免大快照逐字节消耗Worker的JS CPU。
     const checksum = crc32(outputData);
     writeLocalHeader(output, localOffset, source.nameBytes, source.size, checksum, entryDate);
     localOffset = dataOffset + source.size;
@@ -151,20 +153,4 @@ function toDosTime(date: Date): number {
 function toDosDate(date: Date): number {
   const year = Math.max(1980, date.getUTCFullYear());
   return ((year - 1980) << 9) | ((date.getUTCMonth() + 1) << 5) | date.getUTCDate();
-}
-
-function crc32(data: Uint8Array): number {
-  let crc = 0xffffffff;
-  for (const byte of data) crc = CRC32_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function createCrc32Table(): Uint32Array {
-  const table = new Uint32Array(256);
-  for (let index = 0; index < 256; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    table[index] = value >>> 0;
-  }
-  return table;
 }

@@ -89,6 +89,11 @@ test("mobile sheets, dialogs, and notification history stay usable", async ({ pa
       .click();
     await expect(currencyDialog).toBeHidden();
 
+    // 高级设置按分组按需挂载；通过目录进入通知区块后再检查通知历史浮层，避免依赖其它分组的占位状态。
+    await page.getByRole("button", { name: "打开设置目录" }).click();
+    const settingsDrawer = page.getByTestId("settings-section-nav-drawer");
+    await settingsDrawer.getByRole("link", { name: "通知" }).click();
+    await expect(page).toHaveURL(/#settings-notifications$/);
     await page.getByRole("button", { name: "查看调度与历史" }).click();
     const historyDialog = page.getByRole("dialog", { name: "通知调度与发送历史" });
     await expect(historyDialog).toBeVisible();

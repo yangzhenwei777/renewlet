@@ -11,11 +11,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { MAX_MONEY_STRING, MONEY_DECIMAL_SCALE } from "../packages/shared/src/money.ts";
+import { MAX_MONEY_STRING, MONEY_DECIMAL_SCALE } from "@renewlet/shared/money";
 import {
   publicApiDocumentationSchemas,
   publicApiEndpointDocs,
-} from "../packages/shared/src/public-api-docs.ts";
+} from "@renewlet/shared/public-api-docs";
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const checkMode = process.argv.includes("--check");

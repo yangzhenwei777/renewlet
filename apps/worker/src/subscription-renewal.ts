@@ -5,15 +5,56 @@ import {
   type SubscriptionRenewalResult,
 } from "@renewlet/shared/subscription-renewal";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
-import { getSettings, nowIso, SUBSCRIPTION_COLUMNS } from "./db";
-import { subscriptionDerivedMutationPlan } from "./subscription-derived-state";
-import { getSubscriptionSchedulerState, listAutoRenewDueUsers, markAutoRenewCheckedForLocalDate } from "./subscription-scheduler-state";
+import { nowIso, SUBSCRIPTION_COLUMNS } from "./db";
+import { subscriptionDerivedBulkMutationPlan, subscriptionDerivedMutationPlan, type SubscriptionDerivedMutation } from "./subscription-derived-state";
+import { getSubscriptionSchedulerState, markAutoRenewCheckedForLocalDate } from "./subscription-scheduler-state";
 import { dateOnlyInZone } from "./time";
 import type { Env, SubscriptionRow, SubscriptionSchedulerStateRow } from "./types";
 export { dateOnlyInZone } from "./time";
 
 const RENEWAL_MAINTENANCE_PAGE_SIZE = 500;
 const RECURRING_BILLING_CYCLE_SQL = "billing_cycle IN ('weekly', 'monthly', 'quarterly', 'semi-annual', 'annual', 'custom')";
+
+export interface AutoRenewalPage {
+  afterId: string;
+  complete: boolean;
+  updated: number;
+  statements: D1PreparedStatement[];
+}
+
+/** Cron把本页事实/派生写与游标同批提交；不在读页后单独落游标，避免崩溃跳过尚未续订的行。 */
+export async function planAutoRenewalPage(
+  env: Env,
+  userId: string,
+  settings: ApiAppSettings,
+  scheduledAt: Date,
+  afterId: string,
+  limit: number,
+): Promise<AutoRenewalPage> {
+  const today = dateOnlyInZone(scheduledAt, settings.timezone);
+  const rows = await env.DB.prepare(`
+    SELECT ${SUBSCRIPTION_COLUMNS} FROM subscriptions
+    WHERE user_id = ? AND id > ? AND auto_renew = 1 AND ${RECURRING_BILLING_CYCLE_SQL}
+      AND next_billing_date < ? AND status IN ('active', 'trial')
+    ORDER BY id LIMIT ?
+  `).bind(userId, afterId, today, limit).all<SubscriptionRow>();
+  const timestamp = nowIso();
+  const mutations: SubscriptionDerivedMutation[] = rows.results.flatMap((before) => {
+    const result = advanceSubscriptionRenewal(before, today, "auto");
+    return result ? [{
+      before,
+      after: { ...before, next_billing_date: result.nextBillingDate, status: result.status, updated_at: timestamp },
+      kind: "update" as const,
+    }] : [];
+  });
+  const plan = mutations.length > 0 ? subscriptionDerivedBulkMutationPlan(env, mutations, settings, scheduledAt) : null;
+  return {
+    afterId: rows.results.at(-1)?.id ?? afterId,
+    complete: rows.results.length < limit,
+    updated: mutations.length,
+    statements: plan ? [...plan.beforeFact, plan.fact, ...plan.afterFact] : [],
+  };
+}
 
 /**
  * 将 D1 订阅行推进为 shared 续订结果。
@@ -26,30 +67,6 @@ export function advanceSubscriptionRenewal(
   mode: RenewalMode,
 ): SubscriptionRenewalResult | null {
   return advanceSharedSubscriptionRenewal(subscriptionRenewalInputFromRow(row), today, mode);
-}
-
-/** scheduled 顶层先跑全用户自动续订，再进入通知调度，避免过期旧日期进入本轮提醒。 */
-export async function renewAutoSubscriptionsForAllUsers(env: Env, now = new Date()): Promise<{ usersProcessed: number; subscriptionsUpdated: number }> {
-  let usersProcessed = 0;
-  let subscriptionsUpdated = 0;
-  // 顶层只消费 scheduler due-index；真正的本地日期幂等仍在单用户入口判断，避免索引脏值造成误续订。
-  for (;;) {
-    const users = await listAutoRenewDueUsers(env, now, RENEWAL_MAINTENANCE_PAGE_SIZE);
-    for (const user of users) {
-      subscriptionsUpdated += await renewAutoSubscriptionsForUser(env, user.user_id, now);
-      usersProcessed += 1;
-    }
-    if (users.length < RENEWAL_MAINTENANCE_PAGE_SIZE) break;
-  }
-  return { usersProcessed, subscriptionsUpdated };
-}
-
-/** 单用户入口从 settings 读取时区；通知、手动运行和 Cron 都复用同一 today 计算。 */
-export async function renewAutoSubscriptionsForUser(env: Env, userId: string, now = new Date()): Promise<number> {
-  const state = await getSubscriptionSchedulerState(env, userId);
-  if (state.auto_renew_count <= 0) return 0;
-  const settings = await getSettings(env, userId);
-  return renewAutoSubscriptionsForUserWithSettings(env, userId, settings, now, state);
 }
 
 /** 已持有 settings 的通知路径复用完整配置，保证续订事实行和派生提醒计划在同一口径下提交。 */
@@ -110,7 +127,7 @@ async function persistRenewalResult(
   userId: string,
   row: SubscriptionRow,
   result: SubscriptionRenewalResult,
-  settings: Awaited<ReturnType<typeof getSettings>>,
+  settings: ApiAppSettings,
   now: Date,
 ): Promise<void> {
   const timestamp = nowIso();

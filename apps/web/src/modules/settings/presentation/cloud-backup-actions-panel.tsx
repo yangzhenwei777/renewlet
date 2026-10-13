@@ -10,7 +10,8 @@ interface CloudBackupActionsPanelProps {
   credentialLabel: string;
   statusLabel: string;
   lastBackupLabel: string;
-  lastError?: string | null;
+  errorMessage?: string | null;
+  canOpenErrorDetails?: boolean;
   saveLabel: string;
   busy: boolean;
   disabled?: boolean;
@@ -21,6 +22,7 @@ interface CloudBackupActionsPanelProps {
   onSave: () => void | Promise<void>;
   onTest: () => void | Promise<void>;
   onCreate: () => void | Promise<void>;
+  onOpenErrorDetails?: () => void;
 }
 
 export function CloudBackupActionsPanel({
@@ -28,7 +30,8 @@ export function CloudBackupActionsPanel({
   credentialLabel,
   statusLabel,
   lastBackupLabel,
-  lastError,
+  errorMessage,
+  canOpenErrorDetails = false,
   saveLabel,
   busy,
   disabled = false,
@@ -39,6 +42,7 @@ export function CloudBackupActionsPanel({
   onSave,
   onTest,
   onCreate,
+  onOpenErrorDetails,
 }: CloudBackupActionsPanelProps) {
   const { t } = useI18n();
 
@@ -52,10 +56,24 @@ export function CloudBackupActionsPanel({
         <StatusLine label={t("settings.cloudBackupLastBackupAt")} value={lastBackupLabel} />
       </div>
 
-      {lastError ? (
-        <div className="flex max-w-5xl gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-xs leading-5 text-destructive">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="min-w-0 wrap-break-word">{lastError}</span>
+      {errorMessage ? (
+        <div className="flex max-w-5xl flex-col gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-xs leading-5 text-destructive sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 wrap-break-word">{errorMessage}</span>
+          </div>
+          {canOpenErrorDetails && onOpenErrorDetails ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0 justify-center gap-2 border-border text-destructive hover:text-destructive"
+              disabled={disabled}
+              onClick={onOpenErrorDetails}
+            >
+              {t("settings.cloudBackupUpstreamOpen")}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

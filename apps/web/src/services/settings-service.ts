@@ -12,7 +12,7 @@ import {
 import { getApiLocale } from "@/i18n/api-locale";
 import { translate } from "@/i18n/messages";
 import { getSystemTimeZone } from "@/lib/time/time-zone";
-import { getCurrentUserId } from "@/lib/pocketbase";
+import { getProductCurrentUserId } from "@/services/product-session";
 import { normalizeSettingsValue } from "@renewlet/shared/settings-normalization";
 import {
   DEFAULT_SETTINGS,
@@ -58,7 +58,7 @@ function editableSettingsFromPublicView(settings: PublicAppSettings): AppSetting
 /** 设置服务统一调用 Renewlet 产品 API；Docker 端也不能回退到 PocketBase collection REST。 */
 export const settingsService = {
   async get(signal?: AbortSignal): Promise<SettingsReadModel> {
-    const userId = getCurrentUserId();
+    const userId = getProductCurrentUserId();
     if (!userId) return { settings: DEFAULT_SETTINGS, secretStatus: EMPTY_SETTINGS_SECRET_STATUS };
     const data = await apiFetch("/api/app/settings", settingsResponseSchema, signal ? { signal } : undefined);
     return { settings: editableSettingsFromPublicView(data.settings), secretStatus: data.secretStatus };
@@ -69,7 +69,7 @@ export const settingsService = {
     patch: Partial<AppSettings>,
     secretUpdates: SettingsSecretUpdates = {},
   ): Promise<SettingsReadModel> {
-    const userId = getCurrentUserId();
+    const userId = getProductCurrentUserId();
     if (!userId) throw new Error(translate(getApiLocale(), "auth.loginRequired"));
     const next = normalizeSettings({ ...current, ...patch });
     // 浏览器只发送公开 settings 与判别式 secret mutation；任何 draft secret 都不会混入普通字段。

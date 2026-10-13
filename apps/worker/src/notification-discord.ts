@@ -5,6 +5,7 @@
  */
 import type { NotificationEmailMessage } from "@renewlet/shared/email-template";
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
+import type { CronBudget } from "./cron-budget";
 import type { AppLocale } from "./http";
 import { isUnsafeOutboundHostLiteral } from "./outbound-url-policy";
 import { serverFormat, serverText } from "./server-i18n";
@@ -21,7 +22,7 @@ type DiscordWebhookPayload = {
   avatar_url?: string;
 };
 
-export async function sendDiscord(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale): Promise<void> {
+export async function sendDiscord(settings: ApiAppSettings, message: NotificationEmailMessage, locale: AppLocale, budget?: CronBudget): Promise<void> {
   const rawWebhook = requiredSetting(settings.discordWebhookUrl, serverText(locale, "service.discordWebhookURL"), locale);
   const endpoint = discordWebhookEndpoint(rawWebhook, locale);
   const payload: DiscordWebhookPayload = {
@@ -36,7 +37,7 @@ export async function sendDiscord(settings: ApiAppSettings, message: Notificatio
     payload.avatar_url = avatarUrl;
   }
   const secrets = [rawWebhook, endpoint, discordWebhookToken(endpoint), payload.avatar_url ?? ""];
-  const response = await sendNotificationJson(endpoint, payload, "Discord", locale, { secrets });
+  const response = await sendNotificationJson(endpoint, payload, "Discord", locale, { secrets, ...(budget ? { budget } : {}) });
   await requireNotificationHttpOk(response, "Discord", locale, { secrets });
 }
 

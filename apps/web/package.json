@@ -2,7 +2,7 @@
   "name": "@renewlet/client",
   "private": true,
   "license": "MIT",
-  "version": "0.3.26",
+  "version": "0.3.30",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -11,12 +11,12 @@
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint . --max-warnings 0 && node scripts/check-tailwind-canonical-classes.mjs && node scripts/check-form-field-layout.mjs",
     "i18n:check": "node ../../scripts/check-i18n-catalogs.mjs",
-    "i18n:extract": "lingui extract --clean --overwrite && node ../../scripts/generate-i18n-artifacts.mjs",
+    "i18n:extract": "node scripts/extract-i18n.ts && node ../../scripts/generate-i18n-artifacts.mjs",
     "test": "vitest",
     "test:perf": "vitest run .performance.test.tsx",
     "test:run": "vitest run --exclude '**/*.performance.test.tsx'",
     "typecheck": "tsc --noEmit --project tsconfig.app.json",
-    "typecheck:all": "tsc --noEmit --project tsconfig.json --incremental false"
+    "typecheck:all": "tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -68,9 +68,9 @@
     "lucide-react": "^1.29.0",
     "pocketbase": "^0.27.1",
     "qrcode.react": "^4.2.0",
-    "react": "^19.2.8",
+    "react": "19.2.8",
     "react-day-picker": "^10.0.1",
-    "react-dom": "^19.2.8",
+    "react-dom": "19.2.8",
     "react-hook-form": "^7.84.0",
     "react-image-crop": "^11.1.2",
     "react-number-format": "^5.4.5",
@@ -85,21 +85,27 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
     "@eslint/js": "^10.0.1",
-    "@lingui/cli": "6.6.0",
+    "@lingui/babel-plugin-extract-messages": "6.6.0",
+    "@lingui/babel-plugin-lingui-macro": "6.6.0",
     "@lingui/conf": "6.6.0",
-    "@lingui/vite-plugin": "6.6.0",
+    "@lingui/format-po": "6.6.0",
+    "@lingui/message-utils": "6.6.0",
+    "@rolldown/plugin-babel": "0.2.4",
     "@tailwindcss/node": "^4.3.3",
     "@tailwindcss/oxide": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.3",
+    "@types/babel__core": "7.20.5",
     "@types/node": "24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.0.5",
+    "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
@@ -110,7 +116,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.66.0",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vite": "8.3.4",
+    "vitest": "^4.1.11"
   }
 }

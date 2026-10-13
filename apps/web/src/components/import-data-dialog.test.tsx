@@ -8,6 +8,7 @@ import { DEFAULT_CUSTOM_CONFIG } from "@/types/config";
 import { DEFAULT_SETTINGS } from "@/types/subscription";
 import { ApiError } from "@/lib/api-client";
 import { uploadedAssetsQueryKeys } from "@/hooks/use-uploaded-assets";
+import { notificationQueryKeys } from "@/hooks/notification-query-cache";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ImportDataDialogContent, type ImportDataDialogProps } from "./import-data-dialog";
 
@@ -408,6 +409,7 @@ describe("ImportDataDialog", () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: uploadedAssetsQueryKeys.byKind("logo") });
     });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
   });
 
   it("does not invalidate uploaded assets when import apply uploaded no logos", async () => {

@@ -317,6 +317,101 @@ func TestSchemaDataMigrationsBackfillSchedulerWithoutListProjection(t *testing.T
 	}
 }
 
+func TestCancelledNotificationSemanticsMigrationRebuildsRepeatDerivedState(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureCollectionsSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user := createSchemaTestUser(t, app, "schema-cancelled-notification@example.com")
+	subscription := createSchemaTestSubscriptionNoValidate(t, app, user.Id, map[string]interface{}{
+		"name":                  "Cancelled Repeat",
+		"status":                "cancelled",
+		"repeatReminderEnabled": true,
+		"nextBillingDate":       "2026-08-27",
+	})
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`INSERT INTO subscription_repeat_schedule (user_id, subscription_id, next_due_at_utc)
+		VALUES ({:user}, {:subscription}, '2026-08-24T12:00:00Z')`).Bind(dbx.Params{
+		"user": user.Id, "subscription": subscription.Id,
+	}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`UPDATE subscription_scheduler_states
+		SET repeatReminderCount = 1, nextRepeatNotificationDueAtUTC = '2026-08-24T12:00:00Z'
+		WHERE user = {:user}`).Bind(dbx.Params{"user": user.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`DELETE FROM ` + schemaDataMigrationsTable + `
+		WHERE name = {:name}`).Bind(dbx.Params{"name": subscriptionCancelledNotificationSemanticsMigrationName}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	var scheduleRow struct {
+		Count int `db:"count"`
+	}
+	if err := app.DB().NewQuery(`SELECT COUNT(*) AS count FROM subscription_repeat_schedule
+		WHERE user_id = {:user}`).Bind(dbx.Params{"user": user.Id}).One(&scheduleRow); err != nil {
+		t.Fatal(err)
+	}
+	if scheduleRow.Count != 0 {
+		t.Fatalf("cancelled repeat schedule count = %d, want 0", scheduleRow.Count)
+	}
+	var repeatRow struct {
+		Count int `db:"repeatReminderCount"`
+	}
+	if err := app.DB().NewQuery(`SELECT repeatReminderCount FROM subscription_scheduler_states
+		WHERE user = {:user}`).Bind(dbx.Params{"user": user.Id}).One(&repeatRow); err != nil {
+		t.Fatal(err)
+	}
+	if repeatRow.Count != 0 {
+		t.Fatalf("cancelled repeat aggregate count = %d, want 0", repeatRow.Count)
+	}
+	reloaded, err := app.FindRecordById("subscriptions", subscription.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.GetBool("repeatReminderEnabled") {
+		t.Fatal("migration changed the user's repeat reminder setting")
+	}
+}
+
+func TestCancelledNotificationSemanticsMigrationSkipsCleanUsers(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureCollectionsSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user := createSchemaTestUser(t, app, "schema-cancelled-notification-clean@example.com")
+	createSchemaTestSubscriptionNoValidate(t, app, user.Id, map[string]interface{}{
+		"name":                  "Active Repeat",
+		"status":                "active",
+		"repeatReminderEnabled": true,
+		"nextBillingDate":       "2026-08-27",
+	})
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`DELETE FROM ` + schemaDataMigrationsTable + `
+		WHERE name = {:name}`).Bind(dbx.Params{"name": subscriptionCancelledNotificationSemanticsMigrationName}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	operations, err := measureSubscriptionDBOperations(app, func() error {
+		return runSchemaDataMigrations(app)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 已经由旧 scheduler migration 收敛且没有 cancelled 漂移时，只写本次迁移账本，不能再次重建派生表。
+	if operations.DerivedWrites != 0 {
+		t.Fatalf("clean cancelled semantics migration rewrote derived state: %+v", operations)
+	}
+}
+
 func TestSchemaDataMigrationsNormalizeSubscriptionCycleFieldsOnce(t *testing.T) {
 	app := newSchemaTestApp(t)
 	if err := ensureCollectionsSchema(app); err != nil {

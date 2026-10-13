@@ -22,6 +22,8 @@ func prepareExclusiveSchemaDataMigrations(app core.App) error {
 		hasHistory    func(core.App) (bool, error)
 	}{
 		{settingsLocalePreferenceMigrationName, settingsLocalePreferenceRecoveryPoint, historicalRenewletDataExists},
+		// 已完成 v1 的库也需要本次升级前的快照；旧二进制拒绝 v2 guard，仅回滚程序不能恢复旧契约。
+		{settingsLocalePreferenceGuardV2MigrationName, settingsLocalePreferenceGuardV2RecoveryPoint, historicalRenewletDataExists},
 		{notificationMessageMigration, notificationMessageRecoveryPoint, notificationMessageHistoryExists},
 	} {
 		pending, err := schemaDataMigrationPendingWithoutWrites(app, migration.name)

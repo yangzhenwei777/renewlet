@@ -39,7 +39,7 @@ describe("AI recognition notes", () => {
     expect(prompt).toContain("notes.value must be non-null for describable services");
     expect(prompt).toContain("dynamic evidence from this request");
     expect(prompt).toContain("Generated user-facing metadata must follow User locale");
-    expect(prompt).toContain("use English for en-US and Simplified Chinese for zh-CN");
+    expect(prompt).toContain("use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU");
     expect(prompt).toContain("Do not translate source=input text, Existing user tags");
     expect(prompt).toContain("Runtime context:");
     expect(prompt).toContain("User context:");
@@ -61,5 +61,17 @@ describe("AI recognition notes", () => {
     expect(prompt).not.toContain("YouTube 是 Google 旗下的视频分享和流媒体平台。");
     expect(prompt).not.toContain("LOCVPS 是面向 VPS、云服务器和服务器托管的主机服务商。");
     expect(prompt).not.toContain("DMIT 是提供 VPS、云服务器和网络线路服务的主机商。");
+
+    const russianPrompt = buildAIRecognitionUserPrompt({
+      text: "sample service 15 руб. в месяц",
+      timezone: "Europe/Moscow",
+      defaultCurrency: "RUB",
+      currentDate: "2026-06-06",
+      imageCount: 0,
+      locale: "ru-RU",
+      configContext: { categories: [], paymentMethods: [], tags: [] },
+    });
+    expect(russianPrompt).toContain("- User locale: ru-RU");
+    expect(russianPrompt).toContain("use English for en-US, Simplified Chinese for zh-CN, and Russian for ru-RU");
   });
 });

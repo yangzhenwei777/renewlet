@@ -75,16 +75,21 @@ export function CloudBackupSnapshotList({
           <h3 ref={focusFallbackRef} tabIndex={-1} className="text-sm font-semibold text-foreground">{title}</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
-        <SnapshotRefreshButton
-          disabled={refreshDisabled}
-          isRefreshing={state.isRefreshing}
-          label={refreshLabel}
-          onRefresh={state.retry}
-          className="sm:shrink-0"
-        />
+        {snapshotsErrorMessage ? null : (
+          <SnapshotRefreshButton
+            disabled={refreshDisabled}
+            isRefreshing={state.isRefreshing}
+            label={refreshLabel}
+            onRefresh={state.retry}
+            className="sm:shrink-0"
+          />
+        )}
       </div>
 
-      <ManagerDataBoundary state={state}>
+      <ManagerDataBoundary
+        state={state}
+        errorActions={snapshotsErrorMessage ? <SnapshotErrorDetailsButton onOpenErrorDetails={onOpenErrorDetails} /> : null}
+      >
       {snapshots.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-background px-3 py-4 text-sm text-muted-foreground">{t("settings.cloudBackupSnapshotsEmpty")}</div>
       ) : (
@@ -110,11 +115,6 @@ export function CloudBackupSnapshotList({
         </>
       )}
       </ManagerDataBoundary>
-      {snapshotsErrorMessage ? (
-        <Button type="button" variant="ghost" size="sm" className="w-fit" onClick={onOpenErrorDetails}>
-          {t("settings.cloudBackupUpstreamOpen")}
-        </Button>
-      ) : null}
       {shouldRenderFullListOverlay ? (
         <CloudBackupSnapshotListOverlay
           open={fullListOpen}
@@ -239,7 +239,14 @@ function CloudBackupSnapshotListOverlay({
       <div className="grid gap-3">
         {/* Dialog 会把页面背景设为 inert；刷新失败入口必须与缓存行一起留在弹窗内，不能用错误替换旧数据。 */}
         {snapshotsErrorMessage ? (
-          <SnapshotErrorMessage message={snapshotsErrorMessage} onOpenErrorDetails={onOpenErrorDetails} />
+          <SnapshotErrorMessage
+            message={snapshotsErrorMessage}
+            onOpenErrorDetails={onOpenErrorDetails}
+            refreshDisabled={refreshDisabled}
+            isRefreshing={isRefreshing}
+            refreshLabel={refreshLabel}
+            onRefresh={onRefresh}
+          />
         ) : null}
         <SnapshotRows
           snapshots={snapshots}
@@ -263,6 +270,8 @@ function CloudBackupSnapshotListOverlay({
       onRefresh={onRefresh}
     />
   );
+  // 刷新失败时，重试和详情必须同处错误操作区；成功状态仍在标题栏保留轻量刷新入口。
+  const headerActions = snapshotsErrorMessage ? null : refreshButton;
 
   if (isMobile) {
     return (
@@ -273,7 +282,7 @@ function CloudBackupSnapshotListOverlay({
             description={description}
             descriptionClassName="text-xs"
             closeLabel={closeLabel}
-            actions={refreshButton}
+            actions={headerActions}
             className="max-h-[calc(var(--app-viewport-height)-1rem)]"
             headerClassName="border-b border-border"
             bodyClassName={null}
@@ -295,7 +304,7 @@ function CloudBackupSnapshotListOverlay({
               <DialogTitle className="text-base leading-6">{title}</DialogTitle>
               <DialogDescription className="text-left text-xs leading-5">{description}</DialogDescription>
             </div>
-            {refreshButton}
+            {headerActions}
           </div>
         </DialogHeader>
         {content}
@@ -346,19 +355,53 @@ function SnapshotRefreshButton({
   );
 }
 
-function SnapshotErrorMessage({ message, onOpenErrorDetails }: { message: string; onOpenErrorDetails: () => void }) {
-  const { t } = useI18n();
-
+function SnapshotErrorMessage({
+  message,
+  onOpenErrorDetails,
+  refreshDisabled,
+  isRefreshing,
+  refreshLabel,
+  onRefresh,
+}: {
+  message: string;
+  onOpenErrorDetails: () => void;
+  refreshDisabled: boolean;
+  isRefreshing: boolean;
+  refreshLabel: string;
+  onRefresh: () => void | Promise<void>;
+}) {
   return (
     <div role="alert" className="flex flex-col gap-3 rounded-md border border-border bg-background p-3 text-sm text-foreground sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
         <span className="min-w-0 wrap-break-word">{message}</span>
       </div>
-      <Button type="button" variant="outline" size="sm" className="shrink-0 justify-center gap-2 border-border text-destructive hover:text-destructive" onClick={onOpenErrorDetails}>
-        {t("settings.cloudBackupUpstreamOpen")}
-      </Button>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <SnapshotErrorDetailsButton onOpenErrorDetails={onOpenErrorDetails} />
+        <SnapshotRefreshButton
+          disabled={refreshDisabled}
+          isRefreshing={isRefreshing}
+          label={refreshLabel}
+          onRefresh={onRefresh}
+        />
+      </div>
     </div>
+  );
+}
+
+function SnapshotErrorDetailsButton({ onOpenErrorDetails }: { onOpenErrorDetails: () => void }) {
+  const { t } = useI18n();
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-9 shrink-0 justify-center gap-2 border-border text-destructive hover:text-destructive"
+      onClick={onOpenErrorDetails}
+    >
+      {t("settings.cloudBackupUpstreamOpen")}
+    </Button>
   );
 }
 

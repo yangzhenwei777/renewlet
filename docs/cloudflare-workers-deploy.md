@@ -243,7 +243,7 @@ Before a schema upgrade, create a portable SQL export. `pnpm deploy` captures th
 pnpm exec wrangler d1 export DB --remote --config wrangler.generated.jsonc --output renewlet-before-upgrade.sql
 ```
 
-Normal upgrades stay online. When an unapplied `_exclusive_` migration exists, the deployment orchestrator first deploys the same Worker bundle in maintenance mode, removes Cron and the Queue consumer, and waits Cloudflare's 15-minute maximum background invocation duration. API, ICS, and webhook requests return `503` with `Retry-After: 900` and `Cache-Control: no-store`; Static Assets continue serving the SPA.
+Normal upgrades stay online. When an unapplied `_exclusive_` migration exists, or the `subscription-derived-state-v4` marker is still pending, the deployment orchestrator first deploys the same Worker bundle in maintenance mode, removes Cron and the Queue consumer, and waits Cloudflare's 15-minute maximum background invocation duration. API, ICS, and webhook requests return `503` with `Retry-After: 900` and `Cache-Control: no-store`; Static Assets continue serving the SPA.
 
 ```bash
 pnpm deploy -- --config wrangler.generated.jsonc --maintenance-config wrangler.maintenance.generated.jsonc

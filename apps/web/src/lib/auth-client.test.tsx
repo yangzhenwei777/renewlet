@@ -11,8 +11,7 @@ type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn<FetchMock>(),
-  authStoreOnChange: vi.fn(),
-  authStoreClear: vi.fn(),
+  loadPasswordReset: vi.fn(),
   authenticatePasskey: vi.fn(),
   cancelActivePasskeyCeremony: vi.fn(),
 }));
@@ -22,18 +21,10 @@ vi.mock("@/services/runtime", () => ({
   isCloudflareRuntime: true,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: {
-    authStore: {
-      isValid: false,
-      record: null,
-      token: "",
-      onChange: mocks.authStoreOnChange,
-      clear: mocks.authStoreClear,
-    },
-    collection: vi.fn(),
-  },
-}));
+vi.mock("@/services/password-reset-service", () => {
+  mocks.loadPasswordReset();
+  throw new Error("Cloudflare cannot load the PocketBase password reset adapter");
+});
 
 vi.mock("@/services/passkey-service", () => ({
   passkeyService: {
@@ -127,11 +118,17 @@ describe("authClient.useSession", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", mocks.fetch);
     mocks.fetch.mockReset();
-    mocks.authStoreOnChange.mockReset();
-    mocks.authStoreClear.mockReset();
+    mocks.loadPasswordReset.mockReset();
     mocks.authenticatePasskey.mockReset().mockResolvedValue({ status: "authenticated", session: sessionFixture });
     mocks.cancelActivePasskeyCeremony.mockReset();
     window.localStorage.clear();
+  });
+
+  it("rejects native password reset without loading the Docker adapter", async () => {
+    await expect(authClient.requestPasswordReset("alice@example.com")).rejects.toThrow("Email password reset is not enabled");
+    await expect(authClient.confirmPasswordReset("reset-token", "new-password")).rejects.toThrow("Email password reset is not enabled");
+    expect(mocks.loadPasswordReset).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("deduplicates simultaneous Cloudflare session validation across consumers", async () => {
